@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Primary Meta Tags -->
+  <meta name="title" content="WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation - Kim et al.">
+  <meta name="description" content="WiFi-JEPA is a self-supervised framework that learns CSI-native representations via masked latent prediction for WiFi-CSI 3D human pose estimation, reaching state-of-the-art on Person-in-WiFi-3D.">
+  <meta name="keywords" content="WiFi CSI, 3D human pose estimation, self-supervised learning, JEPA, ray-tracing simulation, masked latent prediction, WiFi sensing, through-wall sensing">
+  <meta name="author" content="Doeon Kim, Jungyoon Lee, Seong-heum Kim">
+  <meta name="robots" content="index, follow">
+  <meta name="language" content="English">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Soongsil University">
+  <meta property="og:title" content="WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation">
+  <meta property="og:description" content="A self-supervised JEPA framework for WiFi-CSI 3D human pose estimation, achieving state-of-the-art results on Person-in-WiFi-3D.">
+  <meta property="og:url" content="https://wifi-jepa.github.io/">
+  <meta property="article:author" content="Doeon Kim">
+  <meta property="article:section" content="Research">
+  <meta property="article:tag" content="WiFi CSI">
+  <meta property="article:tag" content="3D Human Pose Estimation">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation">
+  <meta name="twitter:description" content="A self-supervised JEPA framework for WiFi-CSI 3D human pose estimation, achieving state-of-the-art results on Person-in-WiFi-3D.">
+
+  <!-- Academic/Research Specific -->
+  <meta name="citation_title" content="WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation">
+  <meta name="citation_author" content="Kim, Doeon">
+  <meta name="citation_author" content="Lee, Jungyoon">
+  <meta name="citation_author" content="Kim, Seong-heum">
+  <meta name="citation_publication_date" content="2026">
+  <meta name="citation_conference_title" content="European Conference on Computer Vision (ECCV)">
+
+  <!-- Additional SEO -->
+  <meta name="theme-color" content="#2563eb">
+  <meta name="msapplication-TileColor" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+  <!-- Preconnect for performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://ajax.googleapis.com">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+
+
+  <title>WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation</title>
+
+  <!-- Favicon and App Icons -->
+  <link rel="icon" type="image/x-icon" href="static/images/favicon.ico">
+  <link rel="apple-touch-icon" href="static/images/favicon.ico">
+
+  <!-- Critical CSS - Load synchronously -->
+  <link rel="stylesheet" href="static/css/bulma.min.css">
+  <link rel="stylesheet" href="static/css/index.css">
+
+  <!-- Non-critical CSS - Load asynchronously -->
+  <link rel="preload" href="static/css/bulma-carousel.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="static/css/bulma-slider.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="static/css/fontawesome.all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+
+  <!-- Fallback for browsers that don't support preload -->
+  <noscript>
+    <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
+    <link rel="stylesheet" href="static/css/bulma-slider.min.css">
+    <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  </noscript>
+
+  <!-- Fonts - Optimized loading -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Defer non-critical JavaScript -->
+  <script defer src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="static/js/fontawesome.all.min.js"></script>
+  <script defer src="static/js/bulma-carousel.min.js"></script>
+  <script defer src="static/js/bulma-slider.min.js"></script>
+  <script defer src="static/js/index.js"></script>
+
+  <!-- Structured Data for Academic Papers -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "ScholarlyArticle",
+    "headline": "WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation",
+    "description": "A self-supervised JEPA framework for WiFi-CSI 3D human pose estimation, achieving state-of-the-art results on Person-in-WiFi-3D.",
+    "author": [
+      {
+        "@type": "Person",
+        "name": "Doeon Kim",
+        "affiliation": { "@type": "Organization", "name": "Soongsil University" }
+      },
+      {
+        "@type": "Person",
+        "name": "Jungyoon Lee",
+        "affiliation": { "@type": "Organization", "name": "Soongsil University" }
+      },
+      {
+        "@type": "Person",
+        "name": "Seong-heum Kim",
+        "affiliation": { "@type": "Organization", "name": "Soongsil University" }
+      }
+    ],
+    "datePublished": "2026",
+    "publisher": {
+      "@type": "Organization",
+      "name": "European Conference on Computer Vision (ECCV)"
+    },
+    "url": "https://wifi-jepa.github.io/",
+    "keywords": ["WiFi CSI", "3D human pose estimation", "self-supervised learning", "JEPA", "ray-tracing simulation"],
+    "isAccessibleForFree": true
+  }
+  </script>
+</head>
+<body>
+
+
+  <!-- Scroll to Top Button -->
+  <button class="scroll-to-top" onclick="scrollToTop()" title="Scroll to top" aria-label="Scroll to top">
+    <i class="fas fa-chevron-up"></i>
+  </button>
+
+  <main id="main-content">
+  <section class="hero">
+    <div class="hero-body">
+      <div class="container is-max-desktop">
+        <div class="columns is-centered">
+          <div class="column has-text-centered">
+            <h1 class="title is-1 publication-title">WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation</h1>
+            <div class="is-size-5 publication-authors">
+              <span class="author-block">
+                <a href="https://orcid.org/0009-0006-3187-4503" target="_blank">Doeon Kim</a>,</span>
+              <span class="author-block">
+                <a href="https://orcid.org/0009-0001-0240-4741" target="_blank">Jungyoon Lee</a>,</span>
+              <span class="author-block">
+                Seong-heum Kim</span>
+            </div>
+
+            <div class="is-size-5 publication-authors">
+              <span class="author-block">Soongsil University, Seoul, South Korea<br>European Conference on Computer Vision (ECCV) 2026</span>
+            </div>
+
+            <div class="column has-text-centered">
+              <div class="publication-links">
+                <!-- Paper PDF will be linked once publicly available -->
+                <span class="link-block">
+                  <button class="external-link button is-normal is-rounded is-dark" disabled title="Coming soon">
+                    <span class="icon">
+                      <i class="fas fa-file-pdf"></i>
+                    </span>
+                    <span>Paper (soon)</span>
+                  </button>
+                </span>
+
+                <!-- arXiv preprint will be linked once available -->
+                <span class="link-block">
+                  <button class="external-link button is-normal is-rounded is-dark" disabled title="Coming soon">
+                    <span class="icon">
+                      <i class="ai ai-arxiv"></i>
+                    </span>
+                    <span>arXiv (soon)</span>
+                  </button>
+                </span>
+
+                <!-- Code and dataset will be released -->
+                <span class="link-block">
+                  <button class="external-link button is-normal is-rounded is-dark" disabled title="Coming soon">
+                    <span class="icon">
+                      <i class="fab fa-github"></i>
+                    </span>
+                    <span>Code (soon)</span>
+                  </button>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+</section>
+
+
+<!-- Paper abstract -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            WiFi Channel State Information (CSI) enables privacy-preserving human pose sensing through walls and in darkness, but existing WiFi-based pose estimators often fail under domain shifts (e.g., changes in room layout and transceiver placement) and rely on costly camera-based annotation pipelines that limit scale. We propose <strong>WiFi-JEPA</strong>, a self-supervised framework that learns CSI-native representations by predicting masked latent embeddings, avoiding raw-signal reconstruction that can overfit hardware-specific artifacts. WiFi-JEPA makes three contributions: (i) CSI-specific tokenization and link masking tailored to the CSI tensor over channel–time–link (C, T, L); masking entire Tx–Rx antenna links forces the model to predict one spatial link view from others, capturing cross-link correlations informative of 3D spatial structure. (ii) A ray-tracing CSI simulation pipeline that generates pre-training data from geometric primitives at low marginal cost; ~90K simulated frames match ~90K real frames in pre-training effectiveness, while a human-mesh variant yields negative transfer. (iii) State-of-the-art results on Person-in-WiFi-3D: 76.8&nbsp;mm single-person and 93.5&nbsp;mm multi-person MPJPE, outperforming prior WiFi-CSI baselines under the same protocol. In a controlled comparison, four alternative SSL objectives degrade performance below training from scratch, whereas WiFi-JEPA consistently improves it. <strong>Code and dataset will be released.</strong>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End paper abstract -->
+
+
+<!--BibTex citation -->
+  <section class="section" id="BibTeX">
+    <div class="container is-max-desktop content">
+      <div class="bibtex-header">
+        <h2 class="title">BibTeX</h2>
+        <button class="copy-bibtex-btn" onclick="copyBibTeX()" title="Copy BibTeX to clipboard">
+          <i class="fas fa-copy"></i>
+          <span class="copy-text">Copy</span>
+        </button>
+      </div>
+      <pre id="bibtex-code"><code>@inproceedings{kim2026wifijepa,
+  title     = {WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation},
+  author    = {Kim, Doeon and Lee, Jungyoon and Kim, Seong-heum},
+  booktitle = {Proceedings of the European Conference on Computer Vision (ECCV)},
+  year      = {2026}
+}</code></pre>
+    </div>
+</section>
+<!--End BibTex citation -->
+
+
+  <footer class="footer">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+
+          <p>
+            This page was built using the <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a> which was adopted from the <a href="https://nerfies.github.io" target="_blank">Nerfies</a> project page.
+            You are free to borrow the source code of this website, we just ask that you link back to this page in the footer. <br> This website is licensed under a <a rel="license"  href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">Creative
+            Commons Attribution-ShareAlike 4.0 International License</a>.
+          </p>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+  </body>
+  </html>
