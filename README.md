@@ -6,7 +6,7 @@ Project page for **WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pos
 
 ## Authors
 
-Doeon Kim, Jungyoon Lee, Seong-heum Kim
+Doeon Kim, Jungyoon Lee, Seongsin Kim, Seong-heum Kim
 Soongsil University, Seoul, South Korea
 
 ## Abstract
@@ -26,7 +26,7 @@ Code and dataset will be released.
 ```bibtex
 @inproceedings{kim2026wifijepa,
   title     = {WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation},
-  author    = {Kim, Doeon and Lee, Jungyoon and Kim, Seong-heum},
+  author    = {Kim, Doeon and Lee, Jungyoon and Kim, Seongsin and Kim, Seong-heum},
   booktitle = {Proceedings of the European Conference on Computer Vision (ECCV)},
   year      = {2026}
 }

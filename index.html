@@ -8,7 +8,7 @@
   <meta name="title" content="WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation - Kim et al.">
   <meta name="description" content="WiFi-JEPA is a self-supervised framework that learns CSI-native representations via masked latent prediction for WiFi-CSI 3D human pose estimation, reaching state-of-the-art on Person-in-WiFi-3D.">
   <meta name="keywords" content="WiFi CSI, 3D human pose estimation, self-supervised learning, JEPA, ray-tracing simulation, masked latent prediction, WiFi sensing, through-wall sensing">
-  <meta name="author" content="Doeon Kim, Jungyoon Lee, Seong-heum Kim">
+  <meta name="author" content="Doeon Kim, Jungyoon Lee, Seongsin Kim, Seong-heum Kim">
   <meta name="robots" content="index, follow">
   <meta name="language" content="English">
 
@@ -32,6 +32,7 @@
   <meta name="citation_title" content="WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation">
   <meta name="citation_author" content="Kim, Doeon">
   <meta name="citation_author" content="Lee, Jungyoon">
+  <meta name="citation_author" content="Kim, Seongsin">
   <meta name="citation_author" content="Kim, Seong-heum">
   <meta name="citation_publication_date" content="2026">
   <meta name="citation_conference_title" content="European Conference on Computer Vision (ECCV)">
@@ -52,8 +53,10 @@
   <title>WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation</title>
 
   <!-- Favicon and App Icons -->
+  <link rel="icon" type="image/svg+xml" href="static/images/favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="static/images/favicon-32.png">
   <link rel="icon" type="image/x-icon" href="static/images/favicon.ico">
-  <link rel="apple-touch-icon" href="static/images/favicon.ico">
+  <link rel="apple-touch-icon" href="static/images/apple-touch-icon.png">
 
   <!-- Critical CSS - Load synchronously -->
   <link rel="stylesheet" href="static/css/bulma.min.css">
@@ -94,16 +97,24 @@
       {
         "@type": "Person",
         "name": "Doeon Kim",
+        "url": "https://kimdoeon.github.io/",
         "affiliation": { "@type": "Organization", "name": "Soongsil University" }
       },
       {
         "@type": "Person",
         "name": "Jungyoon Lee",
+        "url": "https://jungyoon-lee.github.io/",
+        "affiliation": { "@type": "Organization", "name": "Soongsil University" }
+      },
+      {
+        "@type": "Person",
+        "name": "Seongsin Kim",
         "affiliation": { "@type": "Organization", "name": "Soongsil University" }
       },
       {
         "@type": "Person",
         "name": "Seong-heum Kim",
+        "url": "https://scholar.google.com/citations?user=Hw6lYIcAAAAJ&hl=ko",
         "affiliation": { "@type": "Organization", "name": "Soongsil University" }
       }
     ],
@@ -117,6 +128,23 @@
     "isAccessibleForFree": true
   }
   </script>
+
+  <style>
+    .section-figure { margin: 1.25rem auto; max-width: 1000px; }
+    .section-figure img { width: 100%; height: auto; border-radius: 8px; box-shadow: 0 1px 6px rgba(0,0,0,.12); }
+    .fig-caption { font-size: .95rem; color: #555; margin-top: .6rem; }
+    .stat-strip { display:flex; flex-wrap:wrap; gap:1.25rem; justify-content:center; margin-top:1.5rem; }
+    .stat { text-align:center; min-width:130px; }
+    .stat .num { font-size:1.9rem; font-weight:800; color:#2563eb; line-height:1.1; }
+    .stat .lbl { font-size:.82rem; color:#666; }
+    .results-table { margin:0 auto; }
+    .results-table tr.ours td { background:#eef4ff; }
+    .results-table tr.best td { background:#dbe7ff; font-weight:700; }
+    .sim-table { margin: 1rem auto; }
+    .simobj-list { display:flex; flex-direction:column; gap:1.1rem; max-width:1000px; margin:1.25rem auto 0; }
+    .simobj-item { margin:0; }
+    .simobj-slot { aspect-ratio:21/9; background:#1f2733; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#9aa6b6; font-size:.95rem; text-align:center; padding:1rem; box-shadow:0 1px 6px rgba(0,0,0,.12); }
+  </style>
 </head>
 <body>
 
@@ -135,15 +163,18 @@
             <h1 class="title is-1 publication-title">WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation</h1>
             <div class="is-size-5 publication-authors">
               <span class="author-block">
-                <a href="https://orcid.org/0009-0006-3187-4503" target="_blank">Doeon Kim</a>,</span>
+                <a href="https://kimdoeon.github.io/" target="_blank">Doeon Kim</a><sup>*</sup>,</span>
               <span class="author-block">
-                <a href="https://orcid.org/0009-0001-0240-4741" target="_blank">Jungyoon Lee</a>,</span>
+                <a href="https://jungyoon-lee.github.io/" target="_blank">Jungyoon Lee</a><sup>*</sup>,</span>
               <span class="author-block">
-                Seong-heum Kim</span>
+                Seongsin Kim,</span>
+              <span class="author-block">
+                <a href="https://scholar.google.com/citations?user=Hw6lYIcAAAAJ&amp;hl=ko" target="_blank">Seong-heum Kim</a></span>
+              <div class="eql-cntrb"><small><sup>*</sup>&nbsp;Equal contribution</small></div>
             </div>
 
             <div class="is-size-5 publication-authors">
-              <span class="author-block">Soongsil University, Seoul, South Korea<br>European Conference on Computer Vision (ECCV) 2026</span>
+              <span class="author-block">Soongsil University<br>ECCV 2026</span>
             </div>
 
             <div class="column has-text-centered">
@@ -158,16 +189,6 @@
                   </button>
                 </span>
 
-                <!-- arXiv preprint will be linked once available -->
-                <span class="link-block">
-                  <button class="external-link button is-normal is-rounded is-dark" disabled title="Coming soon">
-                    <span class="icon">
-                      <i class="ai ai-arxiv"></i>
-                    </span>
-                    <span>arXiv (soon)</span>
-                  </button>
-                </span>
-
                 <!-- Code and dataset will be released -->
                 <span class="link-block">
                   <button class="external-link button is-normal is-rounded is-dark" disabled title="Coming soon">
@@ -175,6 +196,16 @@
                       <i class="fab fa-github"></i>
                     </span>
                     <span>Code (soon)</span>
+                  </button>
+                </span>
+
+                <!-- Simulated CSI dataset (sim-object) to be released -->
+                <span class="link-block">
+                  <button class="external-link button is-normal is-rounded is-dark" disabled title="Coming soon">
+                    <span class="icon">
+                      <i class="fas fa-database"></i>
+                    </span>
+                    <span>Sim-Obj Dataset (soon)</span>
                   </button>
                 </span>
               </div>
@@ -186,6 +217,23 @@
 </section>
 
 
+<!-- Teaser figure (fig.1) -->
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <figure class="section-figure" style="margin-top:0;">
+        <img src="static/images/figures/overview.png" alt="WiFi-JEPA overall framework">
+      </figure>
+      <p class="fig-caption has-text-centered">
+        <strong>WiFi-JEPA</strong> pre-trains on real and simulated CSI, then fine-tunes for multi-person 3D pose.
+        <em>Left:</em> pre-training data (sim-object + real CSI). <em>Center:</em> generated CSI input and WiFi-JEPA. <em>Right:</em> ground-truth vs. predicted 3D poses.
+      </p>
+    </div>
+  </div>
+</section>
+<!-- End teaser figure -->
+
+
 <!-- Paper abstract -->
 <section class="section hero is-light">
   <div class="container is-max-desktop">
@@ -194,14 +242,128 @@
         <h2 class="title is-3">Abstract</h2>
         <div class="content has-text-justified">
           <p>
-            WiFi Channel State Information (CSI) enables privacy-preserving human pose sensing through walls and in darkness, but existing WiFi-based pose estimators often fail under domain shifts (e.g., changes in room layout and transceiver placement) and rely on costly camera-based annotation pipelines that limit scale. We propose <strong>WiFi-JEPA</strong>, a self-supervised framework that learns CSI-native representations by predicting masked latent embeddings, avoiding raw-signal reconstruction that can overfit hardware-specific artifacts. WiFi-JEPA makes three contributions: (i) CSI-specific tokenization and link masking tailored to the CSI tensor over channel–time–link (C, T, L); masking entire Tx–Rx antenna links forces the model to predict one spatial link view from others, capturing cross-link correlations informative of 3D spatial structure. (ii) A ray-tracing CSI simulation pipeline that generates pre-training data from geometric primitives at low marginal cost; ~90K simulated frames match ~90K real frames in pre-training effectiveness, while a human-mesh variant yields negative transfer. (iii) State-of-the-art results on Person-in-WiFi-3D: 76.8&nbsp;mm single-person and 93.5&nbsp;mm multi-person MPJPE, outperforming prior WiFi-CSI baselines under the same protocol. In a controlled comparison, four alternative SSL objectives degrade performance below training from scratch, whereas WiFi-JEPA consistently improves it. <strong>Code and dataset will be released.</strong>
+            WiFi Channel State Information (CSI) enables privacy-preserving human pose sensing through walls and in darkness, but existing WiFi-based pose estimators often fail under domain shifts (e.g., changes in room layout and transceiver placement) and rely on costly camera-based annotation pipelines that limit scale. We propose <strong>WiFi-JEPA</strong>, a self-supervised framework that learns CSI-native representations by predicting masked latent embeddings, avoiding raw-signal reconstruction that can overfit hardware-specific artifacts. WiFi-JEPA makes three contributions: (i) CSI-specific tokenization and link masking tailored to the CSI tensor over channel–time–link (C, T, L); masking entire Tx–Rx antenna links forces the model to predict one spatial link view from others, capturing cross-link correlations informative of 3D spatial structure. (ii) A ray-tracing CSI simulation pipeline that generates pre-training data from geometric primitives at low marginal cost; ~90K simulated frames match ~90K real frames in pre-training effectiveness, while a human-mesh variant yields negative transfer. (iii) State-of-the-art results on Person-in-WiFi-3D: 76.8&nbsp;mm single-person and 93.5&nbsp;mm multi-person MPJPE, outperforming prior WiFi-CSI baselines under the same protocol. In a controlled comparison, four alternative SSL objectives degrade performance below training from scratch, whereas WiFi-JEPA consistently improves it.
           </p>
+        </div>
+        <div class="stat-strip">
+          <div class="stat"><div class="num">76.8&nbsp;mm</div><div class="lbl">Single-person MPJPE</div></div>
+          <div class="stat"><div class="num">93.5&nbsp;mm</div><div class="lbl">Multi-person MPJPE</div></div>
+          <div class="stat"><div class="num">&minus;48%</div><div class="lbl">Cross-environment error</div></div>
+          <div class="stat"><div class="num">&minus;64%</div><div class="lbl">Hand-joint error</div></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 <!-- End paper abstract -->
+
+
+<!-- Method -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered"><div class="column has-text-centered">
+      <h2 class="title is-3">Method</h2>
+    </div></div>
+    <div class="content has-text-justified">
+      <p>
+        WiFi-JEPA keeps the CSI tensor <strong>factored as <em>(C, T, L)</em></strong> — 60 subcarrier channels, 20 time steps, and 9 antenna links — embedding each (time, link) coordinate as its own token instead of flattening it into an axis-mixing 2D spectrogram. It then applies <strong>link masking</strong>: entire antenna links (5 of 9) are hidden and predicted from the rest, forcing the model to exploit the <strong>cross-link spatial correlations</strong> that make 3D pose recoverable. Prediction happens in <strong>latent space</strong> (JEPA), never reconstructing raw CSI or its hardware-specific noise. <em>Phase&nbsp;1</em> pre-trains the encoder this way; <em>Phase&nbsp;2</em> attaches a PETR decoder and fine-tunes on real CSI for multi-person 3D pose.
+      </p>
+    </div>
+    <figure class="section-figure">
+      <img src="static/images/figures/architecture.png" alt="WiFi-JEPA two-phase architecture">
+    </figure>
+    <p class="fig-caption has-text-centered">
+      <strong>Phase 1:</strong> self-supervised pre-training with link masking on the (T, L) token grid. <strong>Phase 2:</strong> supervised fine-tuning with a PETR decoder for multi-person 3D pose.
+    </p>
+  </div>
+</section>
+<!-- End method -->
+
+
+<!-- Sim-Obj in Action -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered"><div class="column has-text-centered">
+      <h2 class="title is-3">Sim-Obj in Action</h2>
+    </div></div>
+    <div class="content has-text-justified">
+      <p>
+        We pre-train on ray-traced CSI from scenes of simple <strong>bouncing geometric primitives</strong> — no human models or motion capture. As an object moves, ray tracing computes the channel and the <strong>CSI varies accordingly</strong>. It is this <strong>dynamics diversity</strong>, not geometric realism, that makes the representation transfer: ~90K simulated frames match ~90K real frames for pre-training, and combining both yields the best result.
+      </p>
+    </div>
+
+    <figure class="section-figure">
+      <img src="static/images/figures/sim_overview.png" alt="Synthetic scene overview and CSI amplitude comparison: sim-object vs sim-human">
+    </figure>
+    <p class="fig-caption has-text-centered">
+      <strong>Synthetic scene overview and CSI amplitude comparison.</strong> <em>Top:</em> sim-object (left) uses geometric primitives with fast bouncing trajectories; sim-human (right) uses human meshes with motion-capture animation. <em>Bottom:</em> CSI amplitude over 20 sub-frames for each source (500-sample median with 25–75% and 5–95% percentile bands; 50 individual traces overlaid). sim-object exhibits rich temporal variation while sim-human is near-static.
+    </p>
+
+    <!-- TODO: replace each mockup slot with the real wide video, e.g.:
+         <video autoplay muted loop playsinline style="width:100%;border-radius:10px;">
+           <source src="static/videos/simobj_1.mp4" type="video/mp4">
+         </video> -->
+    <div class="simobj-list">
+      <figure class="simobj-item">
+        <div class="simobj-slot"><span><i class="fas fa-video"></i>&nbsp;&nbsp;Example 1&nbsp;&nbsp;—&nbsp;&nbsp;moving object + ray tracing&nbsp;&nbsp;|&nbsp;&nbsp;CSI&nbsp;&nbsp;·&nbsp;&nbsp;<em>video coming soon</em></span></div>
+      </figure>
+      <figure class="simobj-item">
+        <div class="simobj-slot"><span><i class="fas fa-video"></i>&nbsp;&nbsp;Example 2&nbsp;&nbsp;—&nbsp;&nbsp;moving object + ray tracing&nbsp;&nbsp;|&nbsp;&nbsp;CSI&nbsp;&nbsp;·&nbsp;&nbsp;<em>video coming soon</em></span></div>
+      </figure>
+      <figure class="simobj-item">
+        <div class="simobj-slot"><span><i class="fas fa-video"></i>&nbsp;&nbsp;Example 3&nbsp;&nbsp;—&nbsp;&nbsp;moving object + ray tracing&nbsp;&nbsp;|&nbsp;&nbsp;CSI&nbsp;&nbsp;·&nbsp;&nbsp;<em>video coming soon</em></span></div>
+      </figure>
+    </div>
+    <p class="fig-caption has-text-centered">
+      Each example (placeholder): <em>left</em> — a primitive moving while ray tracing computes the channel; <em>right</em> — the resulting CSI changing over time.
+    </p>
+  </div>
+</section>
+<!-- End sim-obj -->
+
+
+<!-- Results -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered"><div class="column has-text-centered">
+      <h2 class="title is-3">Results</h2>
+    </div></div>
+    <div class="content has-text-justified">
+      <p>
+        On <strong>PiW3D</strong> — the only public multi-person WiFi-CSI 3D benchmark — WiFi-JEPA sets a new state of the art, improving single-person MPJPE by <strong>14.7%</strong> over the previous best (DT-Pose) and reducing multi-person error from 107.2 to <strong>93.5&nbsp;mm</strong>. Adding simulated pre-training data improves both settings further.
+      </p>
+    </div>
+    <div class="table-container">
+      <table class="table is-bordered is-hoverable results-table has-text-centered">
+        <thead>
+          <tr>
+            <th>Method</th><th>Venue</th>
+            <th>SP&nbsp;MPJPE&nbsp;&darr;</th><th>SP&nbsp;PCK@20&nbsp;&uarr;</th>
+            <th>MP&nbsp;MPJPE&nbsp;&darr;</th><th>MP&nbsp;PCK@20&nbsp;&uarr;</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>WiPose</td><td>MobiCom'20</td><td>101.8</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td></tr>
+          <tr><td>MetaFi++</td><td>IoT-J'23</td><td>132.0</td><td>62.0</td><td>&mdash;</td><td>&mdash;</td></tr>
+          <tr><td>HPE-Li</td><td>ECCV'24</td><td>120.2</td><td>59.1</td><td>&mdash;</td><td>&mdash;</td></tr>
+          <tr><td>DT-Pose</td><td>arXiv'25</td><td>90.0</td><td>72.1</td><td>&mdash;</td><td>&mdash;</td></tr>
+          <tr><td>PiW3D (baseline)</td><td>CVPR'24</td><td>91.7</td><td>69.3</td><td>107.2</td><td>58.1</td></tr>
+          <tr class="ours"><td>WiFi-JEPA (real)</td><td>Ours</td><td>78.2</td><td>74.5</td><td>97.1</td><td>59.3</td></tr>
+          <tr class="best"><td>WiFi-JEPA (real+sim)</td><td>Ours</td><td>76.8</td><td>75.9</td><td>93.5</td><td>61.5</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fig-caption has-text-centered">MPJPE in mm (lower is better); PCK@20 in % (higher is better). SP: single-person, MP: multi-person.</p>
+
+    <figure class="section-figure" style="margin-top:2rem;">
+      <img src="static/images/figures/qualitative.png" alt="Qualitative 3D pose comparison: baseline vs WiFi-JEPA">
+    </figure>
+    <p class="fig-caption has-text-centered">
+      Qualitative comparison (GT in cyan, prediction in red). <em>Top:</em> PiW3D baseline. <em>Bottom:</em> WiFi-JEPA. <em>Left to right:</em> 1-, 2-, and 3-person scenes.
+    </p>
+  </div>
+</section>
+<!-- End results -->
 
 
 <!--BibTex citation -->
@@ -216,7 +378,7 @@
       </div>
       <pre id="bibtex-code"><code>@inproceedings{kim2026wifijepa,
   title     = {WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pose Estimation},
-  author    = {Kim, Doeon and Lee, Jungyoon and Kim, Seong-heum},
+  author    = {Kim, Doeon and Lee, Jungyoon and Kim, Seongsin and Kim, Seong-heum},
   booktitle = {Proceedings of the European Conference on Computer Vision (ECCV)},
   year      = {2026}
 }</code></pre>
