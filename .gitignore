@@ -5,3 +5,7 @@
 # Editor / OS cruft
 *.swp
 Thumbs.db
+
+*.pdf
+*.zip
+/p3d-viz
