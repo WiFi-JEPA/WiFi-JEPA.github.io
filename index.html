@@ -297,7 +297,7 @@
     </div></div>
     <div class="content has-text-justified">
       <p>
-        WiFi-JEPA keeps the CSI tensor <strong>factored as <em>(C, T, L)</em></strong> — 60 subcarrier channels, 20 time steps, and 9 antenna links — embedding each (time, link) coordinate as its own token instead of flattening it into an axis-mixing 2D spectrogram. It then applies <strong>link masking</strong>: entire antenna links (5 of 9) are hidden and predicted from the rest, forcing the model to exploit the <strong>cross-link spatial correlations</strong> that make 3D pose recoverable. Prediction happens in <strong>latent space</strong> (JEPA), never reconstructing raw CSI or its hardware-specific noise. <em>Phase&nbsp;1</em> pre-trains the encoder this way; <em>Phase&nbsp;2</em> attaches a PETR decoder and fine-tunes on real CSI for multi-person 3D pose.
+        <strong>CSI-specific tokenization.</strong> WiFi-JEPA keeps the CSI tensor factored as <em>(C,&nbsp;T,&nbsp;L)</em> — 60 subcarriers, 20 time steps, and 9 antenna links — embedding each (time, link) coordinate as its own token. <strong>Link masking.</strong> Entire antenna links (5 of 9) are masked and predicted from the rest, forcing the model to learn the cross-link spatial correlations. <strong>Latent prediction.</strong> Prediction happens in latent space (JEPA), never reconstructing raw CSI or its hardware-specific noise.
       </p>
     </div>
     <figure class="section-figure">
