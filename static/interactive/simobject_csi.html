@@ -1,0 +1,633 @@
+<meta charset="utf-8">
+<title>WiFi-JEPA · sim-object → CSI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html,body{margin:0;overflow:hidden}
+  .sim-wrap{
+    --ink:#1d1d1f; --muted:#77777c; --hair:#d9d9dc;
+    --orange:#EFA02E; --green:#2FB767;
+    max-width:1280px; margin:0 auto; padding:26px 18px;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    color:var(--ink); background:#fff;
+  }
+  .sim-fig{display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap}
+  .sim-fig figure{margin:0; display:flex; flex-direction:column; gap:9px; flex:1 1 400px; max-width:680px; min-width:320px}
+  .sim-fig figcaption{font-size:13.5px; letter-spacing:.01em}
+  .sim-fig figcaption b{font-weight:650}
+  .sim-fig figcaption span{color:var(--muted); font-weight:400}
+  .sim-fig canvas{width:100%; height:auto; display:block}
+  .sim-arrow{flex:0 0 auto; font-size:38px; line-height:1; color:#bcbcc0; padding:0 2px; user-select:none}
+  .sim-legend{display:flex; flex-wrap:wrap; gap:6px 18px; font-size:12.5px; color:var(--muted)}
+  .sim-key{display:inline-block; width:22px; border-top:3px solid; border-radius:2px; vertical-align:middle; margin-right:6px; transform:translateY(-2px)}
+  .csi-box{position:relative}
+  .csi-tip{position:absolute; pointer-events:none; background:#1d1d1f; color:#fff; font-size:11.5px;
+           padding:3px 7px; border-radius:4px; white-space:nowrap; display:none; transform:translate(-50%,-130%)}
+  .sim-controls{display:flex; align-items:center; justify-content:center; gap:10px; margin-top:18px; flex-wrap:wrap}
+  .sim-controls button{
+    font:500 13.5px system-ui,sans-serif; color:var(--ink);
+    background:#fff; border:1px solid var(--hair); border-radius:7px;
+    padding:7px 16px; cursor:pointer;
+  }
+  .sim-controls button:hover{background:#f5f5f7}
+  .sim-controls button:focus-visible{outline:2px solid #6aa3e8; outline-offset:1px}
+  .sim-controls button:disabled{opacity:.4; cursor:default}
+  .sim-status{font-size:13px; color:var(--muted); min-width:210px; text-align:left;
+              font-variant-numeric:tabular-nums}
+  @media (max-width:940px){ .sim-arrow{transform:rotate(90deg); width:100%; text-align:center; padding:0} }
+</style>
+
+<div class="sim-wrap">
+  <div class="sim-fig">
+    <figure>
+      <figcaption><b>sim-object</b> <span>· each packet fans out everywhere — some rays scatter off the object, others take static wall paths</span></figcaption>
+      <canvas id="simScene" width="1440" height="1080"></canvas>
+      <div class="sim-legend">
+        <span><i class="sim-key" style="border-color:var(--orange)"></i>incident&nbsp;(TX → object)</span>
+        <span><i class="sim-key" style="border-color:var(--green)"></i>scattered&nbsp;(object → RX)</span>
+        <span><i class="sim-key" style="border-color:#8FAEC6"></i>static multipath&nbsp;(walls only)</span>
+      </div>
+    </figure>
+
+    <div class="sim-arrow" aria-hidden="true">&#8594;</div>
+
+    <figure>
+      <figcaption><b>CSI at RX</b> <span>· 60 × 20 tensor per pose frame (PiW3D: 300 pkt/s ÷ 15 fps = 20)</span></figcaption>
+      <div class="csi-box">
+        <canvas id="simCsi" width="1440" height="1080"></canvas>
+        <div class="csi-tip" id="csiTip"></div>
+      </div>
+      <div class="sim-legend"><span>rows: 30 amplitude + 30 sanitized-phase subcarriers · realistic noise/AGC/CFO applied · one column per packet</span></div>
+    </figure>
+  </div>
+
+  <div class="sim-controls">
+    <button id="btnPrev" aria-label="previous frame">&#9664;&nbsp;prev</button>
+    <button id="btnPlay" aria-label="play or pause">&#9654;&nbsp;play</button>
+    <button id="btnNext" aria-label="next frame">next&nbsp;&#9654;</button>
+    <span class="sim-status" id="simStatus">preparing…</span>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+/* ============ constants (Blender scene + PiW3D numbers) ============ */
+const SW = 720, SH = 540, CW = 720, CH = 540, DPR = 2;
+const ROOMX = 6, ROOMY = 4.5, ROOMZ = 2.7;
+const TX = [0.3, 4.2, 1.35], RXP = [5.7, 0.3, 1.35];
+const RBALL = 0.62, BALL_Y = 2.25, BALL_Z = 1.35, X0 = 1.0, X1 = 5.0;
+const NPATHS = 10, NWALL = 6, MAXB = 5, RXCAP = 0.55;
+const NSC = 30, NPKT = 20, NTICK = 40;   // 30 subcarriers · 20 packets/frame · 40 frame positions (ping-pong)
+const F0 = 5.64e9, BWD = 20e6, LIGHT = 3e8;   // PiW3D: channel 128 (5.64 GHz), 30 subcarriers
+const RAY_V = 50;                        // visual ray speed, m/s
+const PKT_INT = 0.14;                    // s between packet launches (300 Hz stretched for clarity)
+
+/* ============ camera: Blender TopDownCam reproduced ============ */
+const CAM = [-2.028, -7.889, 7.29];
+const rxA = 60.4 * Math.PI / 180, rzA = -27.2 * Math.PI / 180;
+const cxr = Math.cos(rxA), sxr = Math.sin(rxA), czr = Math.cos(rzA), szr = Math.sin(rzA);
+const AXx = czr,        AXy = szr,        AXz = 0;
+const AYx = -szr * cxr, AYy = czr * cxr,  AYz = sxr;
+const AZx = szr * sxr,  AZy = -czr * sxr, AZz = cxr;
+const FS = (SW / 2) * (50 / 18);
+function proj(x, y, z) {
+  const px = x - CAM[0], py = y - CAM[1], pz = z - CAM[2];
+  const xc = px * AXx + py * AXy + pz * AXz;
+  const yc = px * AYx + py * AYy + pz * AYz;
+  const d  = -(px * AZx + py * AZy + pz * AZz);
+  return [SW / 2 + xc / d * FS, SH / 2 - yc / d * FS, d];
+}
+
+/* ============ ray tracing (port of build_movemulti.py) ============ */
+const GA = Math.PI * (3 - Math.sqrt(5));
+function coneDirs(ax, ay, az, halfDeg, n, out, off) {
+  const il = 1 / Math.hypot(ax, ay, az); ax *= il; ay *= il; az *= il;
+  let sxv, syv, szv;
+  if (Math.abs(az) < 0.98) { sxv = ay; syv = -ax; szv = 0; }
+  else { sxv = 1; syv = 0; szv = 0; }
+  const sl = 1 / Math.hypot(sxv, syv, szv); sxv *= sl; syv *= sl; szv *= sl;
+  const uxv = syv * az - szv * ay, uyv = szv * ax - sxv * az, uzv = sxv * ay - syv * ax;
+  const cmax = Math.cos(halfDeg * Math.PI / 180);
+  for (let i = 0; i < n; i++) {
+    const yy = 1 - (i / Math.max(n - 1, 1)) * (1 - cmax);
+    const rr = Math.sqrt(Math.max(0, 1 - yy * yy)), ph = i * GA;
+    const cp = Math.cos(ph) * rr, sp = Math.sin(ph) * rr;
+    const k = (off + i) * 3;
+    out[k]     = ax * yy + sxv * cp + uxv * sp;
+    out[k + 1] = ay * yy + syv * cp + uyv * sp;
+    out[k + 2] = az * yy + szv * cp + uzv * sp;
+  }
+}
+function trace(dx, dy, dz, bx, by, bz, store) {
+  let ox = TX[0], oy = TX[1], oz = TX[2];
+  let vc = 1, oi = -1, reached = false, L = 0;
+  const pts = store ? [[ox, oy, oz]] : null;
+  for (let b = 0; b < MAXB; b++) {
+    const il = 1 / Math.hypot(dx, dy, dz); dx *= il; dy *= il; dz *= il;
+    let tS = Infinity;
+    const cox = ox - bx, coy = oy - by, coz = oz - bz;
+    const bq = cox * dx + coy * dy + coz * dz;
+    const cq = cox * cox + coy * coy + coz * coz - RBALL * RBALL;
+    const disc = bq * bq - cq;
+    if (disc > 0) { const t = -bq - Math.sqrt(disc); if (t > 1e-4) tS = t; }
+    let tB = Infinity, nx = 0, ny = 0, nz = 0;
+    if (dx > 1e-9)      { const t = (ROOMX - ox) / dx; if (t < tB) { tB = t; nx = -1; ny = 0; nz = 0; } }
+    else if (dx < -1e-9){ const t = (0 - ox) / dx;     if (t < tB) { tB = t; nx = 1;  ny = 0; nz = 0; } }
+    if (dy > 1e-9)      { const t = (ROOMY - oy) / dy; if (t < tB) { tB = t; nx = 0; ny = -1; nz = 0; } }
+    else if (dy < -1e-9){ const t = (0 - oy) / dy;     if (t < tB) { tB = t; nx = 0; ny = 1;  nz = 0; } }
+    if (dz > 1e-9)      { const t = (ROOMZ - oz) / dz; if (t < tB) { tB = t; nx = 0; ny = 0; nz = -1; } }
+    else if (dz < -1e-9){ const t = (0 - oz) / dz;     if (t < tB) { tB = t; nx = 0; ny = 0; nz = 1; } }
+    let t, hitObj = false;
+    if (tS < tB) { t = tS; hitObj = true; } else { t = tB; }
+    if (!isFinite(t)) break;
+    const ex = ox + dx * t, ey = oy + dy * t, ez = oz + dz * t;
+    const sxs = ex - ox, sys = ey - oy, szs = ez - oz;
+    const ll = sxs * sxs + sys * sys + szs * szs;
+    let tt = ((RXP[0] - ox) * sxs + (RXP[1] - oy) * sys + (RXP[2] - oz) * szs) / ll;
+    tt = tt < 0 ? 0 : tt > 1 ? 1 : tt;
+    const qx = ox + sxs * tt - RXP[0], qy = oy + sys * tt - RXP[1], qz = oz + szs * tt - RXP[2];
+    const dRx = Math.hypot(RXP[0] - ox, RXP[1] - oy, RXP[2] - oz);
+    if (qx * qx + qy * qy + qz * qz < RXCAP * RXCAP && dRx > 0.5) {
+      if (store) pts.push([RXP[0], RXP[1], RXP[2]]);
+      L += dRx; vc++; reached = true; break;
+    }
+    if (store) pts.push([ex, ey, ez]);
+    L += Math.sqrt(ll); vc++;
+    if (hitObj) {
+      if (oi < 0) oi = vc - 1;
+      const inl = 1 / Math.hypot(ex - bx, ey - by, ez - bz);
+      nx = (ex - bx) * inl; ny = (ey - by) * inl; nz = (ez - bz) * inl;
+    }
+    const dn = dx * nx + dy * ny + dz * nz;
+    dx -= 2 * dn * nx; dy -= 2 * dn * ny; dz -= 2 * dn * nz;
+    ox = ex + dx * 1e-3; oy = ey + dy * 1e-3; oz = ez + dz * 1e-3;
+  }
+  return { vc, oi, reached, L, pts };
+}
+function buildPath(r) {           // trace result → path object with cumulative lengths
+  const cum = [0];
+  for (let j = 1; j < r.pts.length; j++) {
+    const a = r.pts[j - 1], b = r.pts[j];
+    cum.push(cum[j - 1] + Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]));
+  }
+  return { pts: r.pts, oi: r.oi, cum, L: cum[cum.length - 1], segs: r.pts.length - 1 };
+}
+const NWIDE = 1500, NFOC = 5000;
+const DIRS = new Float64Array((NWIDE + NFOC) * 3);
+function diversePick(cand, n) {
+  if (!cand.length) return [];
+  const sel = [cand.reduce((a, b) => (b.L > a.L ? b : a))];
+  const used = new Set([sel[0].i]);
+  while (sel.length < Math.min(n, cand.length)) {
+    let best = null, bm = -1;
+    for (const c of cand) {
+      if (used.has(c.i)) continue;
+      let mn = Infinity;
+      for (const s of sel) {
+        const a = c.i * 3, b = s.i * 3;
+        const dot = DIRS[a] * DIRS[b] + DIRS[a + 1] * DIRS[b + 1] + DIRS[a + 2] * DIRS[b + 2];
+        const ang = Math.acos(Math.max(-1, Math.min(1, dot)));
+        if (ang < mn) mn = ang;
+      }
+      if (mn > bm) { bm = mn; best = c; }
+    }
+    sel.push(best); used.add(best.i);
+  }
+  return sel.map(s => [DIRS[s.i * 3], DIRS[s.i * 3 + 1], DIRS[s.i * 3 + 2]]);
+}
+function findDirs(bx, by, bz) {   // object-scatter dirs + static wall-only dirs (both reach RX)
+  coneDirs(3.0 - TX[0], 1.8 - TX[1], 1.1 - TX[2], 84, NWIDE, DIRS, 0);
+  coneDirs(bx - TX[0], by - TX[1], bz - TX[2], 24, NFOC, DIRS, NWIDE);
+  const cObj = [], cWall = [];
+  for (let i = 0; i < NWIDE + NFOC; i++) {
+    const k = i * 3;
+    const r = trace(DIRS[k], DIRS[k + 1], DIRS[k + 2], bx, by, bz, false);
+    const segs = r.vc - 1;
+    if (!r.reached || segs < 2 || segs > 5) continue;
+    if (r.oi > 0 && r.oi < r.vc - 1) cObj.push({ i, L: r.L });
+    else if (r.oi < 0) cWall.push({ i, L: r.L });
+  }
+  return { obj: diversePick(cObj, NPATHS), wall: diversePick(cWall, NWALL) };
+}
+
+/* ============ frames: 1 tick = 1 pose frame = 20 packets ============ */
+function W(m) {                   // ping-pong waypoint at tick boundary m
+  const mm = ((m % NTICK) + NTICK) % NTICK;
+  return mm <= 20 ? X0 + (X1 - X0) * mm / 20 : X1 - (X1 - X0) * (mm - 20) / 20;
+}
+const TICKS = [];                 // per frame: {x0, x1, packets:[{x, paths, amp[30], pha[30]}×20]}
+const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+function randn() {                                   // Box-Muller
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+const HWR = new Float64Array(NSC);                   // fixed RF-chain frequency response (ripple + edge roll-off)
+for (let k = 0; k < NSC; k++) {
+  const e = (k - (NSC - 1) / 2) / ((NSC - 1) / 2);
+  HWR[k] = (1 + 0.09 * Math.sin(0.9 * k + 1.3) + 0.05 * Math.sin(0.23 * k + 0.7)) * (1 - 0.15 * Math.pow(e, 6));
+}
+const SNR_DB = 22, AGC_DB = 0.5;
+function computeTick(m) {
+  const x0 = W(m), x1 = W(m + 1), mid = (x0 + x1) / 2;
+  const dirs = findDirs(mid, BALL_Y, BALL_Z);
+  const Ld = dist3(TX, RXP);
+  const packets = [];
+  for (let j = 0; j < NPKT; j++) {
+    const x = x0 + (x1 - x0) * (j + 0.5) / NPKT;    // object micro-moves during the frame window
+    const po = [], pw = [];
+    const push = d => {
+      const r = trace(d[0], d[1], d[2], x, BALL_Y, BALL_Z, true);
+      const segs = r.vc - 1;
+      if (!r.reached || segs < 2) return;
+      if (r.oi > 0 && r.oi < r.vc - 1) po.push(buildPath(r));       // scatters off the object
+      else if (r.oi < 0) pw.push(buildPath(r));                     // static wall-only path
+    };
+    dirs.obj.forEach(push); dirs.wall.forEach(push);
+    po.sort((a, b) => a.L - b.L); pw.sort((a, b) => a.L - b.L);
+    const maxL = Math.max(po.length ? po[po.length - 1].L : 0, pw.length ? pw[pw.length - 1].L : 0);
+    const amp = new Float64Array(NSC), pha = new Float64Array(NSC);
+    const reA = new Float64Array(NSC), imA = new Float64Array(NSC);
+    for (let k = 0; k < NSC; k++) {                                  // ideal multipath channel
+      const f = F0 - BWD / 2 + BWD * k / (NSC - 1);
+      let re = 0, im = 0;
+      { const p = -2 * Math.PI * f * Ld / LIGHT; re += Math.cos(p); im += Math.sin(p); }  // LOS
+      for (const pth of po) {
+        const g = (1.2 / pth.L) * Math.pow(0.85, pth.segs - 2);
+        const p = -2 * Math.PI * f * pth.L / LIGHT;
+        re += g * Math.cos(p); im += g * Math.sin(p);
+      }
+      for (const pth of pw) {                                        // static multipath background
+        const g = (1.2 / pth.L) * Math.pow(0.85, pth.segs - 2);
+        const p = -2 * Math.PI * f * pth.L / LIGHT;
+        re += g * Math.cos(p); im += g * Math.sin(p);
+      }
+      reA[k] = re; imA[k] = im;
+    }
+    // receiver impairments, per packet: AGC gain jitter · CFO phase offset · STO/SFO linear slope · AWGN
+    const gAGC = Math.pow(10, (randn() * AGC_DB) / 20);
+    const beta = Math.random() * 2 * Math.PI;
+    const slope = (Math.random() - 0.5) * 0.9;
+    let mp = 0; for (let k = 0; k < NSC; k++) mp += reA[k] * reA[k] + imA[k] * imA[k];
+    const sigma = Math.sqrt(mp / NSC) / Math.pow(10, SNR_DB / 20) / Math.SQRT2;
+    const raw = new Float64Array(NSC);
+    for (let k = 0; k < NSC; k++) {
+      const ph = beta + slope * k, cr = Math.cos(ph), sr = Math.sin(ph), hw = HWR[k] * gAGC;
+      const re = (reA[k] * cr - imA[k] * sr) * hw + randn() * sigma;
+      const im = (reA[k] * sr + imA[k] * cr) * hw + randn() * sigma;
+      amp[k] = Math.hypot(re, im);                                   // amplitude used directly (PiW3D)
+      raw[k] = Math.atan2(im, re);
+    }
+    // phase sanitization (PhaseFi-style, what the dataset feeds the model): unwrap + remove linear fit
+    for (let k = 1; k < NSC; k++) {
+      let dph = raw[k] - raw[k - 1];
+      while (dph > Math.PI) { raw[k] -= 2 * Math.PI; dph = raw[k] - raw[k - 1]; }
+      while (dph < -Math.PI) { raw[k] += 2 * Math.PI; dph = raw[k] - raw[k - 1]; }
+    }
+    let sxk = 0, syk = 0, sxxk = 0, sxyk = 0;
+    for (let k = 0; k < NSC; k++) { sxk += k; syk += raw[k]; sxxk += k * k; sxyk += k * raw[k]; }
+    const bfit = (NSC * sxyk - sxk * syk) / (NSC * sxxk - sxk * sxk);
+    const afit = (syk - bfit * sxk) / NSC;
+    for (let k = 0; k < NSC; k++) pha[k] = raw[k] - (afit + bfit * k);  // residual (rad)
+    packets.push({ x, po, pw, maxL, amp, pha });
+  }
+  return { x0, x1, packets };
+}
+
+/* ============ canvases & scene drawing ============ */
+const sceneCv = document.getElementById("simScene");
+const sctx = sceneCv.getContext("2d");
+sctx.scale(DPR, DPR);
+const csiCv = document.getElementById("simCsi");
+const cctx = csiCv.getContext("2d");
+cctx.scale(DPR, DPR);
+const ORANGE = "#EFA02E", GREEN = "#2FB767", WALLC = "#8FAEC6";
+
+function quad(p, fill) {
+  sctx.beginPath();
+  const a = proj(...p[0]); sctx.moveTo(a[0], a[1]);
+  for (let i = 1; i < p.length; i++) { const q = proj(...p[i]); sctx.lineTo(q[0], q[1]); }
+  sctx.closePath(); sctx.fillStyle = fill; sctx.fill();
+}
+function ringMark(cx0, cy0, cz0, r, color, lw) {
+  sctx.beginPath();
+  for (let i = 0; i <= 26; i++) {
+    const a = i / 26 * 2 * Math.PI;
+    const q = proj(cx0 + r * Math.cos(a), cy0 + r * Math.sin(a), cz0);
+    i ? sctx.lineTo(q[0], q[1]) : sctx.moveTo(q[0], q[1]);
+  }
+  sctx.strokeStyle = color; sctx.lineWidth = lw; sctx.stroke();
+}
+const OCCR = RBALL * 0.99;
+const BC = [3, BALL_Y, BALL_Z], B2 = [0, 0]; let B2R = 0;   // ball center (3D), screen pos/radius
+function occluded(x, y, z) {          // does the camera→P sightline pass through the ball?
+  const dx = x - CAM[0], dy = y - CAM[1], dz = z - CAM[2];
+  const ox = CAM[0] - BC[0], oy = CAM[1] - BC[1], oz = CAM[2] - BC[2];
+  const a = dx * dx + dy * dy + dz * dz;
+  const b = 2 * (ox * dx + oy * dy + oz * dz);
+  const c = ox * ox + oy * oy + oz * oz - OCCR * OCCR;
+  const disc = b * b - 4 * a * c;
+  if (disc <= 0) return false;
+  const t = (-b - Math.sqrt(disc)) / (2 * a);
+  return t > 0 && t < 0.999;          // sphere sits between camera and P
+}
+function strokePts(list, color, lw) { // hides ray parts behind the ball, keeps parts in front
+  if (list.length < 2) return;
+  sctx.strokeStyle = color; sctx.lineWidth = lw;
+  sctx.lineJoin = "round"; sctx.lineCap = "round";
+  sctx.beginPath();
+  let open = false;
+  for (let i = 0; i < list.length - 1; i++) {
+    const A = list[i], B = list[i + 1];
+    const a2 = proj(A[0], A[1], A[2]), b2 = proj(B[0], B[1], B[2]);
+    const vx = b2[0] - a2[0], vy = b2[1] - a2[1];
+    const ll = vx * vx + vy * vy || 1e-9;
+    let tt = ((B2[0] - a2[0]) * vx + (B2[1] - a2[1]) * vy) / ll;
+    tt = tt < 0 ? 0 : tt > 1 ? 1 : tt;
+    const qx = a2[0] + vx * tt - B2[0], qy = a2[1] + vy * tt - B2[1];
+    const near = qx * qx + qy * qy < (B2R + 18) * (B2R + 18);   // segment近 ball disk → subdivide
+    const segLen = Math.hypot(B[0] - A[0], B[1] - A[1], B[2] - A[2]);
+    const n = near ? Math.max(1, Math.ceil(segLen / 0.1)) : 1;
+    for (let k = 0; k <= n; k++) {
+      const f = k / n;
+      const px = A[0] + (B[0] - A[0]) * f, py = A[1] + (B[1] - A[1]) * f, pz = A[2] + (B[2] - A[2]) * f;
+      if (occluded(px, py, pz)) { open = false; continue; }
+      const q = proj(px, py, pz);
+      if (!open) { sctx.moveTo(q[0], q[1]); open = true; }
+      else sctx.lineTo(q[0], q[1]);
+    }
+  }
+  sctx.stroke();
+}
+function pointAt(path, d) {
+  const { pts, cum } = path;
+  if (d <= 0) return pts[0];
+  if (d >= path.L) return pts[pts.length - 1];
+  let j = 0; while (cum[j + 1] < d) j++;
+  const f = (d - cum[j]) / (cum[j + 1] - cum[j]);
+  const a = pts[j], b = pts[j + 1];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+}
+function clipped(path, d0, d1) {
+  const { pts, cum } = path;
+  if (d1 <= d0) return [];
+  const out = [pointAt(path, d0)];
+  for (let j = 0; j < pts.length; j++) if (cum[j] > d0 && cum[j] < d1) out.push(pts[j]);
+  out.push(pointAt(path, d1));
+  return out;
+}
+// layers: [{paths, s, alpha}] — s = traveled distance (Infinity = settled)
+function drawScene(bx, layers, flashes) {
+  sctx.clearRect(0, 0, SW, SH);
+  quad([[0, ROOMY, 0], [ROOMX, ROOMY, 0], [ROOMX, ROOMY, ROOMZ], [0, ROOMY, ROOMZ]], "#8C8C8C");
+  quad([[ROOMX, 0, 0], [ROOMX, ROOMY, 0], [ROOMX, ROOMY, ROOMZ], [ROOMX, 0, ROOMZ]], "#949494");
+  quad([[0, 0, 0], [ROOMX, 0, 0], [ROOMX, ROOMY, 0], [0, ROOMY, 0]], "#B1B1B1");
+  ringMark(TX[0], TX[1], TX[2], 0.19, "#E4C24E", 3.0); ringMark(TX[0], TX[1], TX[2], 0.28, "#E4C24E", 1.8);
+  ringMark(RXP[0], RXP[1], RXP[2], 0.19, "#7FCDE9", 3.0); ringMark(RXP[0], RXP[1], RXP[2], 0.28, "#7FCDE9", 1.8);
+  sctx.font = "700 26px system-ui, sans-serif";
+  let q = proj(0.5, 3.5, 1.9); sctx.fillStyle = "#F3E7AC"; sctx.fillText("TX", q[0], q[1]);
+  q = proj(5.0, 0.5, 1.9); sctx.fillStyle = "#D3EFF8"; sctx.fillText("RX", q[0], q[1]);
+  // ball first, then rays with per-point occlusion → rays can pass in front of the object
+  BC[0] = bx; BC[1] = BALL_Y; BC[2] = BALL_Z;
+  const c = proj(bx, BALL_Y, BALL_Z);
+  B2[0] = c[0]; B2[1] = c[1]; B2R = RBALL / c[2] * FS;
+  const sh = proj(bx, BALL_Y, 0.02);
+  sctx.beginPath(); sctx.ellipse(sh[0], sh[1], RBALL / sh[2] * FS * 0.92, RBALL / sh[2] * FS * 0.34, 0, 0, 2 * Math.PI);
+  sctx.fillStyle = "rgba(0,0,0,0.10)"; sctx.fill();
+  const r = B2R;
+  const g = sctx.createRadialGradient(c[0] - r * 0.35, c[1] - r * 0.4, r * 0.15, c[0], c[1], r);
+  g.addColorStop(0, "#FFC1AF"); g.addColorStop(0.55, "#F27A6C"); g.addColorStop(1, "#D2564A");
+  sctx.beginPath(); sctx.arc(c[0], c[1], r, 0, 2 * Math.PI); sctx.fillStyle = g; sctx.fill();
+  for (const ly of layers) {
+    sctx.globalAlpha = ly.alpha;
+    for (const p of ly.pw) {                          // static wall-only rays (no object)
+      strokePts(clipped(p, 0, Math.min(ly.s, p.L)), WALLC, 1.7);
+      if (ly.s > 0 && ly.s < p.L) {
+        const hp = pointAt(p, ly.s);
+        if (!occluded(hp[0], hp[1], hp[2])) {
+          const h = proj(hp[0], hp[1], hp[2]);
+          sctx.beginPath(); sctx.arc(h[0], h[1], 2.9, 0, 2 * Math.PI);
+          sctx.fillStyle = "#fff"; sctx.fill();
+          sctx.beginPath(); sctx.arc(h[0], h[1], 1.8, 0, 2 * Math.PI);
+          sctx.fillStyle = WALLC; sctx.fill();
+        }
+      }
+    }
+    for (const p of ly.po) {                          // rays that scatter off the object
+      const dObj = p.cum[p.oi];
+      strokePts(clipped(p, 0, Math.min(ly.s, dObj)), ORANGE, 2.4);
+      if (ly.s > dObj) strokePts(clipped(p, dObj, Math.min(ly.s, p.L)), GREEN, 2.4);
+      if (ly.s > 0 && ly.s < p.L) {
+        const hp = pointAt(p, ly.s);
+        if (!occluded(hp[0], hp[1], hp[2])) {
+          const h = proj(hp[0], hp[1], hp[2]);
+          sctx.beginPath(); sctx.arc(h[0], h[1], 3.4, 0, 2 * Math.PI);
+          sctx.fillStyle = "#fff"; sctx.fill();
+          sctx.beginPath(); sctx.arc(h[0], h[1], 2.1, 0, 2 * Math.PI);
+          sctx.fillStyle = ly.s < dObj ? ORANGE : GREEN; sctx.fill();
+        }
+      }
+    }
+    sctx.globalAlpha = 1;
+  }
+  if (flashes && !occluded(RXP[0], RXP[1], RXP[2])) {
+    const rq = proj(...RXP);
+    for (const fl of flashes) {
+      const a = 1 - fl.age;
+      sctx.beginPath(); sctx.arc(rq[0], rq[1], 6 + fl.age * 34, 0, 2 * Math.PI);
+      sctx.strokeStyle = fl.k === "w"
+        ? `rgba(143,174,198,${(0.7 * a).toFixed(3)})`
+        : `rgba(47,183,103,${(0.75 * a).toFixed(3)})`;
+      sctx.lineWidth = 2.2; sctx.stroke();
+    }
+  }
+}
+
+/* ============ CSI 60×20 grid ============ */
+const VIR = [[0.267,0.005,0.329],[0.283,0.141,0.458],[0.254,0.265,0.530],[0.207,0.372,0.553],
+             [0.164,0.471,0.558],[0.128,0.567,0.551],[0.135,0.659,0.518],[0.267,0.749,0.441],
+             [0.478,0.821,0.318],[0.741,0.873,0.150],[0.993,0.906,0.144]];
+function viridis(v) {
+  v = Math.max(0, Math.min(1, v)) * (VIR.length - 1);
+  const i = Math.min(VIR.length - 2, Math.floor(v)), f = v - i;
+  const r = (VIR[i][0] + (VIR[i+1][0] - VIR[i][0]) * f) * 255;
+  const g = (VIR[i][1] + (VIR[i+1][1] - VIR[i][1]) * f) * 255;
+  const b = (VIR[i][2] + (VIR[i+1][2] - VIR[i][2]) * f) * 255;
+  return `rgb(${r | 0},${g | 0},${b | 0})`;
+}
+let ampMin = 0, ampMax = 1, amSum = 0, amSum2 = 0;
+let phLo = -1, phHi = 1, phSum = 0, phSum2 = 0, phN = 0;
+const ML = 64, MT = 30, MR = 14, MB = 44;
+const PW = CW - ML - MR, PH = CH - MT - MB;
+const CWd = PW / NPKT, CHt = PH / 60;
+function drawCSI(tickIdx, n) {    // n = committed packet columns
+  cctx.clearRect(0, 0, CW, CH);
+  const T = TICKS[tickIdx % NTICK];
+  for (let j = 0; j < n; j++) {
+    const d = T.packets[j];
+    const x = ML + j * CWd;
+    for (let r = 0; r < 60; r++) {
+      const v = r < 30 ? (d.amp[r] - ampMin) / (ampMax - ampMin + 1e-9)
+                       : (d.pha[r - 30] - phLo) / (phHi - phLo + 1e-9);
+      cctx.fillStyle = viridis(v);
+      cctx.fillRect(x, MT + r * CHt, CWd - 1.2, CHt);
+    }
+  }
+  cctx.strokeStyle = "#fff"; cctx.lineWidth = 2;
+  cctx.beginPath(); cctx.moveTo(ML, MT + PH / 2); cctx.lineTo(ML + PW, MT + PH / 2); cctx.stroke();
+  cctx.strokeStyle = "#CFCFD3"; cctx.lineWidth = 1;
+  cctx.strokeRect(ML - 0.5, MT - 0.5, PW + 1, PH + 1);
+  const mk = Math.min(n, NPKT - 1);          // current/incoming column marker
+  const mx = ML + mk * CWd + CWd / 2;
+  cctx.fillStyle = "#D6455D";
+  cctx.beginPath(); cctx.moveTo(mx - 5, MT - 12); cctx.lineTo(mx + 5, MT - 12); cctx.lineTo(mx, MT - 4);
+  cctx.closePath(); cctx.fill();
+  if (n > 0) { cctx.strokeStyle = "#D6455D"; cctx.lineWidth = 1.4;
+               cctx.strokeRect(ML + (n - 1) * CWd - 0.6, MT - 0.6, CWd, PH + 1.2); }
+  cctx.fillStyle = "#6F6F74"; cctx.font = "500 13px system-ui, sans-serif";
+  cctx.textAlign = "left";
+  cctx.fillText(`frame ${(tickIdx + 1)}`, ML, MT - 12);
+  cctx.save(); cctx.translate(20, MT + PH * 0.25); cctx.rotate(-Math.PI / 2);
+  cctx.textAlign = "center"; cctx.fillText("amplitude · 30 sc", 0, 0); cctx.restore();
+  cctx.save(); cctx.translate(20, MT + PH * 0.75); cctx.rotate(-Math.PI / 2);
+  cctx.textAlign = "center"; cctx.fillText("phase · 30 sc", 0, 0); cctx.restore();
+  cctx.textAlign = "center";
+  cctx.fillText("packet (time within frame) →", ML + PW / 2, CH - 12);
+  cctx.font = "500 11.5px system-ui, sans-serif";
+  for (let j = 0; j < NPKT; j += 5)
+    cctx.fillText(String(j + 1), ML + j * CWd + CWd / 2, CH - 28);
+  cctx.fillText(String(NPKT), ML + (NPKT - 1) * CWd + CWd / 2, CH - 28);
+}
+
+/* ============ interaction / state ============ */
+const btnPrev = document.getElementById("btnPrev");
+const btnPlay = document.getElementById("btnPlay");
+const btnNext = document.getElementById("btnNext");
+const statusEl = document.getElementById("simStatus");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let tick = 0, bursting = false, burstT0 = 0, playing = false, playTimer = null;
+let curCommitted = 0;
+
+function statusN(n) {
+  curCommitted = n;
+  statusEl.textContent = n < NPKT
+    ? `frame ${tick + 1} · packet ${n + 1}/${NPKT} · receiving…`
+    : `frame ${tick + 1} · ${NPKT}/${NPKT} · sample complete`;
+  btnPrev.disabled = tick === 0;
+}
+function settle() {
+  const T = TICKS[tick % NTICK];
+  const P = T.packets[NPKT - 1];
+  drawScene(T.x1, [{ po: P.po, pw: P.pw, s: Infinity, alpha: 1 }], null);
+  drawCSI(tick, NPKT); statusN(NPKT);
+}
+function fireBurst() {
+  if (reduced) { settle(); return; }
+  bursting = true; burstT0 = performance.now();
+  const T = TICKS[tick % NTICK];
+  const T_glide = (NPKT - 1) * PKT_INT + 0.4;
+  (function anim(now) {
+    if (!bursting) return;
+    const t = (now - burstT0) / 1000;
+    const bx = T.x0 + (T.x1 - T.x0) * Math.min(t / T_glide, 1);
+    const layers = [], fl = [];
+    let committed = 0;
+    for (let j = 0; j < NPKT; j++) {
+      const tj = j * PKT_INT;
+      if (t < tj) break;
+      const P = T.packets[j];
+      const s = (t - tj) * RAY_V;
+      const isLast = j === NPKT - 1;
+      if (s < P.maxL) layers.push({ po: P.po, pw: P.pw, s, alpha: 1 });
+      else {
+        const fade = (s - P.maxL) / (RAY_V * 0.3);
+        if (isLast) layers.push({ po: P.po, pw: P.pw, s: Infinity, alpha: 1 });
+        else if (fade < 1) layers.push({ po: P.po, pw: P.pw, s: Infinity, alpha: Math.max(0, 1 - fade) });
+      }
+      for (const p of P.po) {
+        if (s >= p.L) { const age = (s - p.L) / (RAY_V * 0.25); if (age < 1) fl.push({ age, k: "o" }); }
+      }
+      for (const p of P.pw) {
+        if (s >= p.L) { const age = (s - p.L) / (RAY_V * 0.25); if (age < 1) fl.push({ age, k: "w" }); }
+      }
+    }
+    for (let j = 0; j < NPKT; j++) {
+      const tj = j * PKT_INT;
+      const P = T.packets[j];
+      if (t >= tj && (t - tj) * RAY_V >= P.maxL) committed = j + 1; else break;
+    }
+    drawScene(bx, layers, fl);
+    drawCSI(tick, committed);
+    statusN(committed);
+    if (committed >= NPKT) { bursting = false; settle(); if (playing) queueNext(); return; }
+    requestAnimationFrame(anim);
+  })(burstT0);
+}
+function goTo(t, animate) {
+  bursting = false;
+  tick = Math.max(0, t);
+  if (animate) fireBurst(); else settle();
+}
+function queueNext() {
+  clearTimeout(playTimer);
+  playTimer = setTimeout(() => { if (playing) goTo(tick + 1, true); }, 700);
+}
+btnNext.addEventListener("click", () => { stopPlay(); goTo(tick + 1, true); });
+btnPrev.addEventListener("click", () => { stopPlay(); goTo(tick - 1, false); });
+function stopPlay() { playing = false; clearTimeout(playTimer); btnPlay.innerHTML = "&#9654;&nbsp;play"; }
+btnPlay.addEventListener("click", () => {
+  if (playing) { stopPlay(); }
+  else { playing = true; btnPlay.innerHTML = "&#10074;&#10074;&nbsp;pause"; if (!bursting) goTo(tick + 1, true); }
+});
+addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") { stopPlay(); goTo(tick + 1, true); }
+  else if (e.key === "ArrowLeft") { stopPlay(); goTo(tick - 1, false); }
+  else if (e.key === " " && e.target === document.body) { e.preventDefault(); btnPlay.click(); }
+});
+
+/* tooltip on committed cells */
+const tip = document.getElementById("csiTip");
+csiCv.addEventListener("mousemove", e => {
+  const b = csiCv.getBoundingClientRect();
+  const x = (e.clientX - b.left) / b.width * CW, y = (e.clientY - b.top) / b.height * CH;
+  const j = Math.floor((x - ML) / CWd), r = Math.floor((y - MT) / CHt);
+  if (j >= 0 && j < curCommitted && r >= 0 && r < 60) {
+    const d = TICKS[tick % NTICK].packets[j];
+    const sc = r % 30, isA = r < 30;
+    tip.textContent = isA
+      ? `packet ${j + 1} · subcarrier ${sc + 1} · amp ${((d.amp[sc] - ampMin) / (ampMax - ampMin + 1e-9)).toFixed(2)}`
+      : `packet ${j + 1} · subcarrier ${sc + 1} · phase ${d.pha[sc].toFixed(2)} rad`;
+    tip.style.left = (e.clientX - b.left) + "px"; tip.style.top = (e.clientY - b.top) + "px";
+    tip.style.display = "block";
+  } else tip.style.display = "none";
+});
+csiCv.addEventListener("mouseleave", () => tip.style.display = "none");
+
+/* ============ boot: precompute 40 deterministic frames ============ */
+btnPrev.disabled = btnNext.disabled = btnPlay.disabled = true;
+let pm = 0;
+(function pre() {
+  const t0 = performance.now();
+  while (pm < NTICK && performance.now() - t0 < 40) {
+    TICKS.push(computeTick(pm));
+    for (const pk of TICKS[pm].packets) {
+      for (const v of pk.amp) { amSum += v; amSum2 += v * v; }
+      for (const v of pk.pha) { phSum += v; phSum2 += v * v; phN++; }
+    }
+    pm++;
+  }
+  statusEl.textContent = `preparing… ${pm}/${NTICK}`;
+  if (pm < NTICK) { setTimeout(pre, 0); return; }
+  const phMean = phSum / phN, phStd = Math.sqrt(Math.max(phSum2 / phN - phMean * phMean, 1e-9));
+  phLo = phMean - 2.5 * phStd; phHi = phMean + 2.5 * phStd;   // robust range (fade-null outliers clamp)
+  const amMean = amSum / phN, amStd = Math.sqrt(Math.max(amSum2 / phN - amMean * amMean, 1e-9));
+  ampMin = Math.max(0, amMean - 2.5 * amStd); ampMax = amMean + 2.5 * amStd;
+  btnPrev.disabled = btnNext.disabled = btnPlay.disabled = false;
+  btnPrev.disabled = true;
+  if (reduced) { settle(); }
+  else { playing = true; btnPlay.innerHTML = "&#10074;&#10074;&nbsp;pause"; fireBurst(); }
+})();
+})();
+</script>

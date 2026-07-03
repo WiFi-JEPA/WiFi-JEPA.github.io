@@ -147,7 +147,7 @@
     .sim-table { margin: 1rem auto; }
     .simobj-list { display:flex; flex-direction:column; gap:1.1rem; max-width:1000px; margin:1.25rem auto 0; }
     .simobj-item { margin:0; }
-    .simobj-slot { aspect-ratio:21/9; background:#1f2733; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#9aa6b6; font-size:.95rem; text-align:center; padding:1rem; box-shadow:0 1px 6px rgba(0,0,0,.12); }
+    .simobj-embed { display:block; width:100%; min-height:420px; border:0; background:#fff; border-radius:10px; box-shadow:0 1px 6px rgba(0,0,0,.12); overflow:hidden; }
     /* Cross-domain generalization block */
     .cross-domain { margin:2.75rem auto 0; }
     .xd-panel { display:flex; align-items:center; justify-content:center; gap:1rem; max-width:820px; margin:1.75rem auto 0; }
@@ -322,31 +322,35 @@
       </p>
     </div>
 
-    <figure class="section-figure">
-      <img src="static/images/figures/sim_overview.png" alt="Synthetic scene overview and CSI amplitude comparison: sim-object vs sim-human">
-    </figure>
-    <p class="fig-caption has-text-centered">
-      <strong>Synthetic scene overview and CSI amplitude comparison.</strong> <em>Top:</em> sim-object (left) uses geometric primitives with fast bouncing trajectories; sim-human (right) uses human meshes with motion-capture animation. <em>Bottom:</em> CSI amplitude over 20 sub-frames for each source (500-sample median with 25–75% and 5–95% percentile bands; 50 individual traces overlaid). sim-object exhibits rich temporal variation while sim-human is near-static.
-    </p>
-
-    <!-- TODO: replace each mockup slot with the real wide video, e.g.:
-         <video autoplay muted loop playsinline style="width:100%;border-radius:10px;">
-           <source src="static/videos/simobj_1.mp4" type="video/mp4">
-         </video> -->
     <div class="simobj-list">
       <figure class="simobj-item">
-        <div class="simobj-slot"><span><i class="fas fa-video"></i>&nbsp;&nbsp;Example 1&nbsp;&nbsp;—&nbsp;&nbsp;moving object + ray tracing&nbsp;&nbsp;|&nbsp;&nbsp;CSI&nbsp;&nbsp;·&nbsp;&nbsp;<em>video coming soon</em></span></div>
+        <iframe class="simobj-embed" src="static/interactive/simobject_csi.html" title="Interactive: sim-object ray tracing to CSI (single RX)" loading="lazy" scrolling="no"></iframe>
       </figure>
       <figure class="simobj-item">
-        <div class="simobj-slot"><span><i class="fas fa-video"></i>&nbsp;&nbsp;Example 2&nbsp;&nbsp;—&nbsp;&nbsp;moving object + ray tracing&nbsp;&nbsp;|&nbsp;&nbsp;CSI&nbsp;&nbsp;·&nbsp;&nbsp;<em>video coming soon</em></span></div>
-      </figure>
-      <figure class="simobj-item">
-        <div class="simobj-slot"><span><i class="fas fa-video"></i>&nbsp;&nbsp;Example 3&nbsp;&nbsp;—&nbsp;&nbsp;moving object + ray tracing&nbsp;&nbsp;|&nbsp;&nbsp;CSI&nbsp;&nbsp;·&nbsp;&nbsp;<em>video coming soon</em></span></div>
+        <iframe class="simobj-embed" src="static/interactive/simobject_csi_3rx.html" title="Interactive: sim-object ray tracing to CSI (1 TX, 3 RX PiW3D layout)" loading="lazy" scrolling="no"></iframe>
       </figure>
     </div>
     <p class="fig-caption has-text-centered">
-      Each example (placeholder): <em>left</em> — a primitive moving while ray tracing computes the channel; <em>right</em> — the resulting CSI changing over time.
+      <strong>Interactive demos.</strong> <em>Left:</em> a primitive moving while ray tracing computes the channel; <em>right:</em> the resulting CSI changing over time. Top: single RX; bottom: 1&nbsp;TX&nbsp;&times;&nbsp;3&nbsp;RX (PiW3D layout). Use prev&nbsp;/&nbsp;play&nbsp;/&nbsp;next to step through pose frames.
     </p>
+    <script>
+      (() => {
+        const fit = (f) => {
+          try {
+            const doc = f.contentDocument;
+            if (doc && doc.documentElement) f.style.height = doc.documentElement.scrollHeight + "px";
+          } catch (e) { /* cross-origin fallback: keep min-height */ }
+        };
+        document.querySelectorAll("iframe.simobj-embed").forEach((f) => {
+          f.addEventListener("load", () => {
+            fit(f);
+            try {
+              new ResizeObserver(() => fit(f)).observe(f.contentDocument.documentElement);
+            } catch (e) { window.addEventListener("resize", () => fit(f)); }
+          });
+        });
+      })();
+    </script>
   </div>
 </section>
 <!-- End sim-obj -->

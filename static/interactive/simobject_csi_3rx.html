@@ -1,0 +1,720 @@
+<meta charset="utf-8">
+<title>WiFi-JEPA · sim-object → CSI · 3 RX</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html,body{margin:0;overflow:hidden}
+  .sim-wrap{
+    --ink:#1d1d1f; --muted:#77777c; --hair:#d9d9dc;
+    --orange:#EFA02E; --green:#2FB767;
+    max-width:1280px; margin:0 auto; padding:26px 18px;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    color:var(--ink); background:#fff;
+  }
+  .sim-fig{display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap}
+  .sim-fig figure{margin:0; display:flex; flex-direction:column; gap:9px; flex:1 1 400px; max-width:680px; min-width:320px}
+  .sim-fig figcaption{font-size:13.5px; letter-spacing:.01em}
+  .sim-fig figcaption b{font-weight:650}
+  .sim-fig figcaption span{color:var(--muted); font-weight:400}
+  .sim-fig canvas{width:100%; height:auto; display:block}
+  .sim-arrow{flex:0 0 auto; font-size:38px; line-height:1; color:#bcbcc0; padding:0 2px; user-select:none}
+  .sim-legend{display:flex; flex-wrap:wrap; gap:6px 18px; font-size:12.5px; color:var(--muted)}
+  .sim-key{display:inline-block; width:22px; border-top:3px solid; border-radius:2px; vertical-align:middle; margin-right:6px; transform:translateY(-2px)}
+  .csi-box{position:relative}
+  .csi-tip{position:absolute; pointer-events:none; background:#1d1d1f; color:#fff; font-size:11.5px;
+           padding:3px 7px; border-radius:4px; white-space:nowrap; display:none; transform:translate(-50%,-130%)}
+  .sim-controls{display:flex; align-items:center; justify-content:center; gap:10px; margin-top:18px; flex-wrap:wrap}
+  .sim-controls button{
+    font:500 13.5px system-ui,sans-serif; color:var(--ink);
+    background:#fff; border:1px solid var(--hair); border-radius:7px;
+    padding:7px 16px; cursor:pointer;
+  }
+  .sim-controls button:hover{background:#f5f5f7}
+  .sim-controls button:focus-visible{outline:2px solid #6aa3e8; outline-offset:1px}
+  .sim-controls button:disabled{opacity:.4; cursor:default}
+  .sim-status{font-size:13px; color:var(--muted); min-width:230px; text-align:left;
+              font-variant-numeric:tabular-nums}
+  @media (max-width:940px){ .sim-arrow{transform:rotate(90deg); width:100%; text-align:center; padding:0} }
+</style>
+
+<div class="sim-wrap">
+  <div class="sim-fig">
+    <figure>
+      <figcaption><b>sim-object</b> <span>· 1 TX, 3 RX (PiW3D layout) — each packet fans out and is heard by all receivers</span></figcaption>
+      <canvas id="simScene" width="1440" height="1080"></canvas>
+      <div class="sim-legend">
+        <span><i class="sim-key" style="border-color:var(--orange)"></i>incident&nbsp;(TX → object)</span>
+        <span><i class="sim-key" style="border-color:var(--green)"></i>scattered&nbsp;(object → RX)</span>
+        <span><i class="sim-key" style="border-color:#8FAEC6"></i>static multipath&nbsp;(walls only)</span>
+      </div>
+    </figure>
+
+    <div class="sim-arrow" aria-hidden="true">&#8594;</div>
+
+    <figure>
+      <figcaption><b>CSI</b> <span>· 60 × 180 flat spectrogram — 9 links (3 Rx × 3 ant) × 20 packets</span></figcaption>
+      <div class="csi-box">
+        <canvas id="simCsi" width="1440" height="1080"></canvas>
+        <div class="csi-tip" id="csiTip"></div>
+      </div>
+      <div class="sim-legend"><span>rows: 30 amplitude + 30 sanitized-phase subcarriers · columns: Rx-major link blocks, 20 packets each</span></div>
+    </figure>
+  </div>
+
+  <div class="sim-controls">
+    <button id="btnPrev" aria-label="previous frame">&#9664;&nbsp;prev</button>
+    <button id="btnPlay" aria-label="play or pause">&#9654;&nbsp;play</button>
+    <button id="btnNext" aria-label="next frame">next&nbsp;&#9654;</button>
+    <span class="sim-status" id="simStatus">preparing…</span>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+/* ============ constants (Blender scene + PiW3D numbers) ============ */
+const SW = 720, SH = 540, CW = 720, CH = 540, DPR = 2;
+const ROOMX = 6, ROOMY = 4.5, ROOMZ = 2.7;
+const TX = [0.3, 4.2, 1.35];
+const RXS = [
+  { p: [5.7, 0.3, 1.35], name: "RX₁", labelAt: [5.0, 0.5, 1.9] },   // front-right
+  { p: [5.7, 4.2, 1.35], name: "RX₂", labelAt: [4.95, 3.7, 2.05] }, // back-right corner
+  { p: [0.3, 0.3, 1.35], name: "RX₃", labelAt: [0.4, 0.75, 1.9] },  // front-left corner
+];
+const NRX = 3, NANT = 3, NLINK = 9;
+const ANT_OFF = [-0.0266, 0, 0.0266];    // λ/2 antenna spacing (m), along y
+const RBALL = 0.62, BALL_Y = 2.25, BALL_Z = 1.35, X0 = 1.0, X1 = 5.0;
+const NOBJ_RX = 5, NWALL_RX = 3, MAXB = 5, RXCAP = 0.55;
+const NSC = 30, NPKT = 20, NTICK = 40;
+const F0 = 5.64e9, BWD = 20e6, LIGHT = 3e8;   // PiW3D: channel 128 (5.64 GHz)
+const RAY_V = 50, PKT_INT = 0.14;
+const SNR_DB = 22, AGC_DB = 0.5;
+
+/* ============ camera (Blender TopDownCam) ============ */
+const CAM = [-2.028, -7.889, 7.29];
+const rxA = 60.4 * Math.PI / 180, rzA = -27.2 * Math.PI / 180;
+const cxr = Math.cos(rxA), sxr = Math.sin(rxA), czr = Math.cos(rzA), szr = Math.sin(rzA);
+const AXx = czr,        AXy = szr,        AXz = 0;
+const AYx = -szr * cxr, AYy = czr * cxr,  AYz = sxr;
+const AZx = szr * sxr,  AZy = -czr * sxr, AZz = cxr;
+const FS = (SW / 2) * (50 / 18);
+function proj(x, y, z) {
+  const px = x - CAM[0], py = y - CAM[1], pz = z - CAM[2];
+  const xc = px * AXx + py * AXy + pz * AXz;
+  const yc = px * AYx + py * AYy + pz * AYz;
+  const d  = -(px * AZx + py * AZy + pz * AZz);
+  return [SW / 2 + xc / d * FS, SH / 2 - yc / d * FS, d];
+}
+
+/* ============ ray tracing: one sweep, 3 simultaneous RX captures ============ */
+const GA = Math.PI * (3 - Math.sqrt(5));
+function coneDirs(ax, ay, az, halfDeg, n, out, off) {
+  const il = 1 / Math.hypot(ax, ay, az); ax *= il; ay *= il; az *= il;
+  let sxv, syv, szv;
+  if (Math.abs(az) < 0.98) { sxv = ay; syv = -ax; szv = 0; }
+  else { sxv = 1; syv = 0; szv = 0; }
+  const sl = 1 / Math.hypot(sxv, syv, szv); sxv *= sl; syv *= sl; szv *= sl;
+  const uxv = syv * az - szv * ay, uyv = szv * ax - sxv * az, uzv = sxv * ay - syv * ax;
+  const cmax = Math.cos(halfDeg * Math.PI / 180);
+  for (let i = 0; i < n; i++) {
+    const yy = 1 - (i / Math.max(n - 1, 1)) * (1 - cmax);
+    const rr = Math.sqrt(Math.max(0, 1 - yy * yy)), ph = i * GA;
+    const cp = Math.cos(ph) * rr, sp = Math.sin(ph) * rr;
+    const k = (off + i) * 3;
+    out[k]     = ax * yy + sxv * cp + uxv * sp;
+    out[k + 1] = ay * yy + syv * cp + uyv * sp;
+    out[k + 2] = az * yy + szv * cp + uzv * sp;
+  }
+}
+// full bounce polyline once; capture tested against all 3 RXs
+function traceMulti(dx, dy, dz, bx, by, bz, store) {
+  let ox = TX[0], oy = TX[1], oz = TX[2];
+  let oiV = -1, vc = 1, len = 0, capCount = 0;
+  const pts = store ? [[ox, oy, oz]] : null;
+  const cap = [null, null, null];
+  for (let b = 0; b < MAXB; b++) {
+    const il = 1 / Math.hypot(dx, dy, dz); dx *= il; dy *= il; dz *= il;
+    let tS = Infinity;
+    const cox = ox - bx, coy = oy - by, coz = oz - bz;
+    const bq = cox * dx + coy * dy + coz * dz;
+    const cq = cox * cox + coy * coy + coz * coz - RBALL * RBALL;
+    const disc = bq * bq - cq;
+    if (disc > 0) { const t = -bq - Math.sqrt(disc); if (t > 1e-4) tS = t; }
+    let tB = Infinity, nx = 0, ny = 0, nz = 0;
+    if (dx > 1e-9)      { const t = (ROOMX - ox) / dx; if (t < tB) { tB = t; nx = -1; ny = 0; nz = 0; } }
+    else if (dx < -1e-9){ const t = (0 - ox) / dx;     if (t < tB) { tB = t; nx = 1;  ny = 0; nz = 0; } }
+    if (dy > 1e-9)      { const t = (ROOMY - oy) / dy; if (t < tB) { tB = t; nx = 0; ny = -1; nz = 0; } }
+    else if (dy < -1e-9){ const t = (0 - oy) / dy;     if (t < tB) { tB = t; nx = 0; ny = 1;  nz = 0; } }
+    if (dz > 1e-9)      { const t = (ROOMZ - oz) / dz; if (t < tB) { tB = t; nx = 0; ny = 0; nz = -1; } }
+    else if (dz < -1e-9){ const t = (0 - oz) / dz;     if (t < tB) { tB = t; nx = 0; ny = 0; nz = 1; } }
+    let t, hitObj = false;
+    if (tS < tB) { t = tS; hitObj = true; } else { t = tB; }
+    if (!isFinite(t)) break;
+    const ex = ox + dx * t, ey = oy + dy * t, ez = oz + dz * t;
+    const sxs = ex - ox, sys = ey - oy, szs = ez - oz;
+    const ll = sxs * sxs + sys * sys + szs * szs;
+    for (let r = 0; r < NRX; r++) {                    // capture test per RX on this segment
+      if (cap[r]) continue;
+      const R = RXS[r].p;
+      let tt = ((R[0] - ox) * sxs + (R[1] - oy) * sys + (R[2] - oz) * szs) / ll;
+      tt = tt < 0 ? 0 : tt > 1 ? 1 : tt;
+      const qx = ox + sxs * tt - R[0], qy = oy + sys * tt - R[1], qz = oz + szs * tt - R[2];
+      const dRx = Math.hypot(R[0] - ox, R[1] - oy, R[2] - oz);
+      if (qx * qx + qy * qy + qz * qz < RXCAP * RXCAP && dRx > 0.5) {
+        cap[r] = { seg: b, L: len + dRx }; capCount++;
+      }
+    }
+    if (store) pts.push([ex, ey, ez]);
+    len += Math.sqrt(ll); vc++;
+    if (hitObj && oiV < 0) oiV = vc - 1;
+    if (capCount === NRX) break;
+    const dn0 = hitObj
+      ? (() => { const inl = 1 / Math.hypot(ex - bx, ey - by, ez - bz);
+                 nx = (ex - bx) * inl; ny = (ey - by) * inl; nz = (ez - bz) * inl; return 0; })()
+      : 0;
+    const dn = dx * nx + dy * ny + dz * nz;
+    dx -= 2 * dn * nx; dy -= 2 * dn * ny; dz -= 2 * dn * nz;
+    ox = ex + dx * 1e-3; oy = ey + dy * 1e-3; oz = ez + dz * 1e-3;
+  }
+  return { pts, oiV, cap };
+}
+function buildPathRx(ptsFull, oiV, seg, R) {
+  const pts = ptsFull.slice(0, seg + 1).map(p => p);
+  pts.push([R[0], R[1], R[2]]);
+  const cum = [0];
+  for (let j = 1; j < pts.length; j++) {
+    const a = pts[j - 1], b = pts[j];
+    cum.push(cum[j - 1] + Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]));
+  }
+  const oi = (oiV > 0 && oiV <= seg) ? oiV : -1;
+  const la = pts[pts.length - 2];
+  const adL = Math.hypot(R[0] - la[0], R[1] - la[1], R[2] - la[2]) || 1e-9;
+  return { pts, cum, L: cum[cum.length - 1], oi, segs: pts.length - 1,
+           ady: (R[1] - la[1]) / adL };                 // arrival-dir y (antenna ΔL)
+}
+const NWIDE = 1500, NFOC = 3500;
+const DIRS = new Float64Array((NWIDE + NFOC) * 3);
+function diversePick(cand, n) {
+  if (!cand.length) return [];
+  const sel = [cand.reduce((a, b) => (b.L > a.L ? b : a))];
+  const used = new Set([sel[0].i]);
+  while (sel.length < Math.min(n, cand.length)) {
+    let best = null, bm = -1;
+    for (const c of cand) {
+      if (used.has(c.i)) continue;
+      let mn = Infinity;
+      for (const s of sel) {
+        const a = c.i * 3, b = s.i * 3;
+        const dot = DIRS[a] * DIRS[b] + DIRS[a + 1] * DIRS[b + 1] + DIRS[a + 2] * DIRS[b + 2];
+        const ang = Math.acos(Math.max(-1, Math.min(1, dot)));
+        if (ang < mn) mn = ang;
+      }
+      if (mn > bm) { bm = mn; best = c; }
+    }
+    sel.push(best); used.add(best.i);
+  }
+  return sel.map(s => [DIRS[s.i * 3], DIRS[s.i * 3 + 1], DIRS[s.i * 3 + 2]]);
+}
+function findDirsMulti(bx, by, bz) {
+  coneDirs(3.0 - TX[0], 1.8 - TX[1], 1.1 - TX[2], 84, NWIDE, DIRS, 0);
+  coneDirs(bx - TX[0], by - TX[1], bz - TX[2], 24, NFOC, DIRS, NWIDE);
+  const cObj = [[], [], []], cWall = [[], [], []];
+  for (let i = 0; i < NWIDE + NFOC; i++) {
+    const k = i * 3;
+    const tm = traceMulti(DIRS[k], DIRS[k + 1], DIRS[k + 2], bx, by, bz, false);
+    for (let r = 0; r < NRX; r++) {
+      const c = tm.cap[r];
+      if (!c) continue;
+      const segs = c.seg + 1;
+      if (segs < 2 || segs > MAXB) continue;
+      if (tm.oiV > 0 && tm.oiV <= c.seg) cObj[r].push({ i, L: c.L });
+      else if (tm.oiV < 0 || tm.oiV > c.seg) cWall[r].push({ i, L: c.L });
+    }
+  }
+  return {
+    obj: cObj.map(c => diversePick(c, NOBJ_RX)),
+    wall: cWall.map(c => diversePick(c, NWALL_RX)),
+  };
+}
+
+/* ============ frames: 1 tick = 1 pose frame = 20 packets ============ */
+function W(m) {
+  const mm = ((m % NTICK) + NTICK) % NTICK;
+  return mm <= 20 ? X0 + (X1 - X0) * mm / 20 : X1 - (X1 - X0) * (mm - 20) / 20;
+}
+const TICKS = [];
+const dist3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+function randn() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+const HWR = new Float64Array(NSC);
+for (let k = 0; k < NSC; k++) {
+  const e = (k - (NSC - 1) / 2) / ((NSC - 1) / 2);
+  HWR[k] = (1 + 0.09 * Math.sin(0.9 * k + 1.3) + 0.05 * Math.sin(0.23 * k + 0.7)) * (1 - 0.15 * Math.pow(e, 6));
+}
+const HWL = [];                                     // per-link fixed RF signature
+for (let li = 0; li < NLINK; li++) {
+  const phR = Math.random() * 6.28, gA = Math.pow(10, (randn() * 0.4) / 20);
+  const arr = new Float64Array(NSC);
+  for (let k = 0; k < NSC; k++) arr[k] = HWR[k] * (1 + 0.06 * Math.sin(0.55 * k + phR)) * gA;
+  HWL.push(arr);
+}
+function ballBlocks(A, B, bx) {                     // LOS shadowing test vs ball
+  const cx = bx, cy = BALL_Y, cz = BALL_Z;
+  const dx = B[0] - A[0], dy = B[1] - A[1], dz = B[2] - A[2];
+  const ll = dx * dx + dy * dy + dz * dz;
+  let t = ((cx - A[0]) * dx + (cy - A[1]) * dy + (cz - A[2]) * dz) / ll;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const qx = A[0] + dx * t - cx, qy = A[1] + dy * t - cy, qz = A[2] + dz * t - cz;
+  return qx * qx + qy * qy + qz * qz < RBALL * RBALL;
+}
+function computeTick(m) {
+  const x0 = W(m), x1 = W(m + 1), mid = (x0 + x1) / 2;
+  const sel = findDirsMulti(mid, BALL_Y, BALL_Z);
+  const packets = [];
+  for (let j = 0; j < NPKT; j++) {
+    const bx = x0 + (x1 - x0) * (j + 0.5) / NPKT;
+    const po = [[], [], []], pw = [[], [], []];
+    let maxL = 0;
+    for (let r = 0; r < NRX; r++) {
+      const doDir = d => {
+        const tm = traceMulti(d[0], d[1], d[2], bx, BALL_Y, BALL_Z, true);
+        const c = tm.cap[r];
+        if (!c) return;
+        const segs = c.seg + 1;
+        if (segs < 2 || segs > MAXB) return;
+        const pth = buildPathRx(tm.pts, tm.oiV, c.seg, RXS[r].p);
+        if (pth.L > maxL) maxL = pth.L;
+        (pth.oi > 0 ? po[r] : pw[r]).push(pth);
+      };
+      sel.obj[r].forEach(doDir); sel.wall[r].forEach(doDir);
+      po[r].sort((a, b) => a.L - b.L); pw[r].sort((a, b) => a.L - b.L);
+    }
+    // --- CSI: 9 links (Rx-major, antenna, 30 sc) ---
+    const ampL = new Float64Array(NLINK * NSC), phaL = new Float64Array(NLINK * NSC);
+    const reA = new Float64Array(NSC), imA = new Float64Array(NSC), raw = new Float64Array(NSC);
+    for (let r = 0; r < NRX; r++) {
+      const R = RXS[r].p, Ld = dist3(TX, R);
+      const lady = (R[1] - TX[1]) / Ld;                       // LOS arrival-dir y
+      const gL = ballBlocks(TX, R, bx) ? 0.3 : 1.0;           // LOS shadowed by object
+      const beta = Math.random() * 2 * Math.PI;               // per-receiver CFO/STO/AGC
+      const slope = (Math.random() - 0.5) * 0.9;
+      const gAGC = Math.pow(10, (randn() * AGC_DB) / 20);
+      for (let a = 0; a < NANT; a++) {
+        const off = ANT_OFF[a], li = r * NANT + a;
+        let mp = 0;
+        for (let k = 0; k < NSC; k++) {
+          const f = F0 - BWD / 2 + BWD * k / (NSC - 1);
+          let re = 0, im = 0;
+          { const p = -2 * Math.PI * f * (Ld + lady * off) / LIGHT;
+            re += gL * Math.cos(p); im += gL * Math.sin(p); }
+          for (const pth of po[r]) {
+            const g = (1.2 / pth.L) * Math.pow(0.85, pth.segs - 2);
+            const p = -2 * Math.PI * f * (pth.L + pth.ady * off) / LIGHT;
+            re += g * Math.cos(p); im += g * Math.sin(p);
+          }
+          for (const pth of pw[r]) {
+            const g = (1.2 / pth.L) * Math.pow(0.85, pth.segs - 2);
+            const p = -2 * Math.PI * f * (pth.L + pth.ady * off) / LIGHT;
+            re += g * Math.cos(p); im += g * Math.sin(p);
+          }
+          reA[k] = re; imA[k] = im; mp += re * re + im * im;
+        }
+        const sigma = Math.sqrt(mp / NSC) / Math.pow(10, SNR_DB / 20) / Math.SQRT2;
+        for (let k = 0; k < NSC; k++) {
+          const ph = beta + slope * k, cr = Math.cos(ph), sr = Math.sin(ph), hw = HWL[li][k] * gAGC;
+          const re = (reA[k] * cr - imA[k] * sr) * hw + randn() * sigma;
+          const im = (reA[k] * sr + imA[k] * cr) * hw + randn() * sigma;
+          ampL[li * NSC + k] = Math.hypot(re, im);
+          raw[k] = Math.atan2(im, re);
+        }
+        for (let k = 1; k < NSC; k++) {                        // PhaseFi-style sanitization
+          let dph = raw[k] - raw[k - 1];
+          while (dph > Math.PI) { raw[k] -= 2 * Math.PI; dph = raw[k] - raw[k - 1]; }
+          while (dph < -Math.PI) { raw[k] += 2 * Math.PI; dph = raw[k] - raw[k - 1]; }
+        }
+        let sx = 0, sy = 0, sxx = 0, sxy = 0;
+        for (let k = 0; k < NSC; k++) { sx += k; sy += raw[k]; sxx += k * k; sxy += k * raw[k]; }
+        const bf = (NSC * sxy - sx * sy) / (NSC * sxx - sx * sx);
+        const af = (sy - bf * sx) / NSC;
+        for (let k = 0; k < NSC; k++) phaL[li * NSC + k] = raw[k] - (af + bf * k);
+      }
+    }
+    packets.push({ x: bx, po, pw, maxL, ampL, phaL });
+  }
+  return { x0, x1, packets };
+}
+
+/* ============ canvases & scene drawing ============ */
+const sceneCv = document.getElementById("simScene");
+const sctx = sceneCv.getContext("2d");
+sctx.scale(DPR, DPR);
+const csiCv = document.getElementById("simCsi");
+const cctx = csiCv.getContext("2d");
+cctx.scale(DPR, DPR);
+const ORANGE = "#EFA02E", GREEN = "#2FB767", WALLC = "#8FAEC6";
+
+function quad(p, fill) {
+  sctx.beginPath();
+  const a = proj(...p[0]); sctx.moveTo(a[0], a[1]);
+  for (let i = 1; i < p.length; i++) { const q = proj(...p[i]); sctx.lineTo(q[0], q[1]); }
+  sctx.closePath(); sctx.fillStyle = fill; sctx.fill();
+}
+function ringMark(cx0, cy0, cz0, r, color, lw) {
+  sctx.beginPath();
+  for (let i = 0; i <= 26; i++) {
+    const a = i / 26 * 2 * Math.PI;
+    const q = proj(cx0 + r * Math.cos(a), cy0 + r * Math.sin(a), cz0);
+    i ? sctx.lineTo(q[0], q[1]) : sctx.moveTo(q[0], q[1]);
+  }
+  sctx.strokeStyle = color; sctx.lineWidth = lw; sctx.stroke();
+}
+const OCCR = RBALL * 0.99;
+const BC = [3, BALL_Y, BALL_Z], B2 = [0, 0]; let B2R = 0;
+function occluded(x, y, z) {
+  const dx = x - CAM[0], dy = y - CAM[1], dz = z - CAM[2];
+  const ox = CAM[0] - BC[0], oy = CAM[1] - BC[1], oz = CAM[2] - BC[2];
+  const a = dx * dx + dy * dy + dz * dz;
+  const b = 2 * (ox * dx + oy * dy + oz * dz);
+  const c = ox * ox + oy * oy + oz * oz - OCCR * OCCR;
+  const disc = b * b - 4 * a * c;
+  if (disc <= 0) return false;
+  const t = (-b - Math.sqrt(disc)) / (2 * a);
+  return t > 0 && t < 0.999;
+}
+function strokePts(list, color, lw) {
+  if (list.length < 2) return;
+  sctx.strokeStyle = color; sctx.lineWidth = lw;
+  sctx.lineJoin = "round"; sctx.lineCap = "round";
+  sctx.beginPath();
+  let open = false;
+  for (let i = 0; i < list.length - 1; i++) {
+    const A = list[i], B = list[i + 1];
+    const a2 = proj(A[0], A[1], A[2]), b2 = proj(B[0], B[1], B[2]);
+    const vx = b2[0] - a2[0], vy = b2[1] - a2[1];
+    const ll = vx * vx + vy * vy || 1e-9;
+    let tt = ((B2[0] - a2[0]) * vx + (B2[1] - a2[1]) * vy) / ll;
+    tt = tt < 0 ? 0 : tt > 1 ? 1 : tt;
+    const qx = a2[0] + vx * tt - B2[0], qy = a2[1] + vy * tt - B2[1];
+    const near = qx * qx + qy * qy < (B2R + 18) * (B2R + 18);
+    const segLen = Math.hypot(B[0] - A[0], B[1] - A[1], B[2] - A[2]);
+    const n = near ? Math.max(1, Math.ceil(segLen / 0.1)) : 1;
+    for (let k = 0; k <= n; k++) {
+      const f = k / n;
+      const px = A[0] + (B[0] - A[0]) * f, py = A[1] + (B[1] - A[1]) * f, pz = A[2] + (B[2] - A[2]) * f;
+      if (occluded(px, py, pz)) { open = false; continue; }
+      const q = proj(px, py, pz);
+      if (!open) { sctx.moveTo(q[0], q[1]); open = true; }
+      else sctx.lineTo(q[0], q[1]);
+    }
+  }
+  sctx.stroke();
+}
+function pointAt(path, d) {
+  const { pts, cum } = path;
+  if (d <= 0) return pts[0];
+  if (d >= path.L) return pts[pts.length - 1];
+  let j = 0; while (cum[j + 1] < d) j++;
+  const f = (d - cum[j]) / (cum[j + 1] - cum[j]);
+  const a = pts[j], b = pts[j + 1];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+}
+function clipped(path, d0, d1) {
+  const { pts, cum } = path;
+  if (d1 <= d0) return [];
+  const out = [pointAt(path, d0)];
+  for (let j = 0; j < pts.length; j++) if (cum[j] > d0 && cum[j] < d1) out.push(pts[j]);
+  out.push(pointAt(path, d1));
+  return out;
+}
+function drawScene(bx, layers, flashes) {
+  sctx.clearRect(0, 0, SW, SH);
+  quad([[0, ROOMY, 0], [ROOMX, ROOMY, 0], [ROOMX, ROOMY, ROOMZ], [0, ROOMY, ROOMZ]], "#8C8C8C");
+  quad([[ROOMX, 0, 0], [ROOMX, ROOMY, 0], [ROOMX, ROOMY, ROOMZ], [ROOMX, 0, ROOMZ]], "#949494");
+  quad([[0, 0, 0], [ROOMX, 0, 0], [ROOMX, ROOMY, 0], [0, ROOMY, 0]], "#B1B1B1");
+  ringMark(TX[0], TX[1], TX[2], 0.19, "#E4C24E", 3.0); ringMark(TX[0], TX[1], TX[2], 0.28, "#E4C24E", 1.8);
+  sctx.font = "700 26px system-ui, sans-serif";
+  let q = proj(0.5, 3.5, 1.9); sctx.fillStyle = "#F3E7AC"; sctx.fillText("TX", q[0], q[1]);
+  sctx.font = "700 22px system-ui, sans-serif";
+  for (const rx of RXS) {
+    ringMark(rx.p[0], rx.p[1], rx.p[2], 0.19, "#7FCDE9", 3.0);
+    ringMark(rx.p[0], rx.p[1], rx.p[2], 0.28, "#7FCDE9", 1.8);
+    q = proj(...rx.labelAt); sctx.fillStyle = "#D3EFF8"; sctx.fillText(rx.name, q[0], q[1]);
+  }
+  // ball first, then rays with per-point occlusion
+  BC[0] = bx; BC[1] = BALL_Y; BC[2] = BALL_Z;
+  const c = proj(bx, BALL_Y, BALL_Z);
+  B2[0] = c[0]; B2[1] = c[1]; B2R = RBALL / c[2] * FS;
+  const sh = proj(bx, BALL_Y, 0.02);
+  sctx.beginPath(); sctx.ellipse(sh[0], sh[1], RBALL / sh[2] * FS * 0.92, RBALL / sh[2] * FS * 0.34, 0, 0, 2 * Math.PI);
+  sctx.fillStyle = "rgba(0,0,0,0.10)"; sctx.fill();
+  const r = B2R;
+  const g = sctx.createRadialGradient(c[0] - r * 0.35, c[1] - r * 0.4, r * 0.15, c[0], c[1], r);
+  g.addColorStop(0, "#FFC1AF"); g.addColorStop(0.55, "#F27A6C"); g.addColorStop(1, "#D2564A");
+  sctx.beginPath(); sctx.arc(c[0], c[1], r, 0, 2 * Math.PI); sctx.fillStyle = g; sctx.fill();
+  for (const ly of layers) {
+    sctx.globalAlpha = ly.alpha;
+    for (let rr = 0; rr < NRX; rr++) {
+      for (const p of ly.pw[rr]) {
+        strokePts(clipped(p, 0, Math.min(ly.s, p.L)), WALLC, 1.7);
+        if (ly.s > 0 && ly.s < p.L) {
+          const hp = pointAt(p, ly.s);
+          if (!occluded(hp[0], hp[1], hp[2])) {
+            const h = proj(hp[0], hp[1], hp[2]);
+            sctx.beginPath(); sctx.arc(h[0], h[1], 2.9, 0, 2 * Math.PI);
+            sctx.fillStyle = "#fff"; sctx.fill();
+            sctx.beginPath(); sctx.arc(h[0], h[1], 1.8, 0, 2 * Math.PI);
+            sctx.fillStyle = WALLC; sctx.fill();
+          }
+        }
+      }
+    }
+    for (let rr = 0; rr < NRX; rr++) {
+      for (const p of ly.po[rr]) {
+        const dObj = p.cum[p.oi];
+        strokePts(clipped(p, 0, Math.min(ly.s, dObj)), ORANGE, 2.4);
+        if (ly.s > dObj) strokePts(clipped(p, dObj, Math.min(ly.s, p.L)), GREEN, 2.4);
+        if (ly.s > 0 && ly.s < p.L) {
+          const hp = pointAt(p, ly.s);
+          if (!occluded(hp[0], hp[1], hp[2])) {
+            const h = proj(hp[0], hp[1], hp[2]);
+            sctx.beginPath(); sctx.arc(h[0], h[1], 3.4, 0, 2 * Math.PI);
+            sctx.fillStyle = "#fff"; sctx.fill();
+            sctx.beginPath(); sctx.arc(h[0], h[1], 2.1, 0, 2 * Math.PI);
+            sctx.fillStyle = ly.s < dObj ? ORANGE : GREEN; sctx.fill();
+          }
+        }
+      }
+    }
+    sctx.globalAlpha = 1;
+  }
+  if (flashes) {
+    for (const fl of flashes) {
+      const R = RXS[fl.r].p;
+      if (occluded(R[0], R[1], R[2])) continue;
+      const rq = proj(R[0], R[1], R[2]);
+      const a = 1 - fl.age;
+      sctx.beginPath(); sctx.arc(rq[0], rq[1], 6 + fl.age * 30, 0, 2 * Math.PI);
+      sctx.strokeStyle = fl.k === "w"
+        ? `rgba(143,174,198,${(0.7 * a).toFixed(3)})`
+        : `rgba(47,183,103,${(0.75 * a).toFixed(3)})`;
+      sctx.lineWidth = 2.2; sctx.stroke();
+    }
+  }
+}
+
+/* ============ CSI 60×180 grid (9 link blocks × 20 packets) ============ */
+const VIR = [[0.267,0.005,0.329],[0.283,0.141,0.458],[0.254,0.265,0.530],[0.207,0.372,0.553],
+             [0.164,0.471,0.558],[0.128,0.567,0.551],[0.135,0.659,0.518],[0.267,0.749,0.441],
+             [0.478,0.821,0.318],[0.741,0.873,0.150],[0.993,0.906,0.144]];
+function viridis(v) {
+  v = Math.max(0, Math.min(1, v)) * (VIR.length - 1);
+  const i = Math.min(VIR.length - 2, Math.floor(v)), f = v - i;
+  const r = (VIR[i][0] + (VIR[i+1][0] - VIR[i][0]) * f) * 255;
+  const g = (VIR[i][1] + (VIR[i+1][1] - VIR[i][1]) * f) * 255;
+  const b = (VIR[i][2] + (VIR[i+1][2] - VIR[i][2]) * f) * 255;
+  return `rgb(${r | 0},${g | 0},${b | 0})`;
+}
+let ampMin = 0, ampMax = 1, amSum = 0, amSum2 = 0;
+let phLo = -1, phHi = 1, phSum = 0, phSum2 = 0, phN = 0;
+const ML = 64, MT = 30, MR = 14, MB = 50;
+const PW = CW - ML - MR, PH = CH - MT - MB;
+const GAP_A = 2, GAP_R = 5;
+const BW = (PW - 6 * GAP_A - 2 * GAP_R) / NLINK;
+const COLW = BW / NPKT;
+function blockX(li) {
+  const rG = (li >= 3 ? 1 : 0) + (li >= 6 ? 1 : 0);
+  return ML + li * BW + (li - rG) * GAP_A + rG * GAP_R;
+}
+let csiKey = "";
+function drawCSI(tickIdx, n) {
+  const key = tickIdx + "/" + n;
+  if (key === csiKey) return;
+  csiKey = key;
+  cctx.clearRect(0, 0, CW, CH);
+  const T = TICKS[tickIdx % NTICK];
+  const CHt = PH / 60;
+  for (let li = 0; li < NLINK; li++) {
+    const bx0 = blockX(li);
+    for (let j = 0; j < n; j++) {
+      const d = T.packets[j];
+      const x = bx0 + j * COLW;
+      for (let rr = 0; rr < 60; rr++) {
+        const v = rr < 30
+          ? (d.ampL[li * NSC + rr] - ampMin) / (ampMax - ampMin + 1e-9)
+          : (d.phaL[li * NSC + (rr - 30)] - phLo) / (phHi - phLo + 1e-9);
+        cctx.fillStyle = viridis(v);
+        cctx.fillRect(x, MT + rr * CHt, COLW + 0.35, CHt);
+      }
+    }
+    cctx.strokeStyle = "#CFCFD3"; cctx.lineWidth = 1;
+    cctx.strokeRect(bx0 - 0.5, MT - 0.5, BW + 1, PH + 1);
+  }
+  cctx.strokeStyle = "#fff"; cctx.lineWidth = 2;
+  cctx.beginPath(); cctx.moveTo(ML, MT + PH / 2); cctx.lineTo(ML + PW, MT + PH / 2); cctx.stroke();
+  if (n < NPKT) {                                        // playhead in every link block
+    cctx.strokeStyle = "#D6455D"; cctx.lineWidth = 1.2;
+    for (let li = 0; li < NLINK; li++) {
+      const x = blockX(li) + (n + 0.5) * COLW;
+      cctx.beginPath(); cctx.moveTo(x, MT); cctx.lineTo(x, MT + PH); cctx.stroke();
+    }
+  }
+  cctx.fillStyle = "#6F6F74"; cctx.font = "500 13px system-ui, sans-serif";
+  cctx.textAlign = "left";
+  cctx.fillText(`frame ${(tickIdx + 1)}`, ML, MT - 12);
+  cctx.save(); cctx.translate(20, MT + PH * 0.25); cctx.rotate(-Math.PI / 2);
+  cctx.textAlign = "center"; cctx.fillText("amplitude · 30 sc", 0, 0); cctx.restore();
+  cctx.save(); cctx.translate(20, MT + PH * 0.75); cctx.rotate(-Math.PI / 2);
+  cctx.textAlign = "center"; cctx.fillText("phase · 30 sc", 0, 0); cctx.restore();
+  cctx.textAlign = "center";
+  cctx.font = "500 10.5px system-ui, sans-serif";
+  for (let li = 0; li < NLINK; li++)
+    cctx.fillText("a" + (li % 3 + 1), blockX(li) + BW / 2, CH - 34);
+  cctx.font = "600 12.5px system-ui, sans-serif";
+  for (let rr = 0; rr < NRX; rr++)
+    cctx.fillText("RX" + "₁₂₃"[rr], blockX(rr * 3 + 1) + BW / 2, CH - 18);
+  cctx.font = "500 11px system-ui, sans-serif";
+  cctx.fillText("9 links · 20 packets each →", ML + PW / 2, CH - 4);
+}
+
+/* ============ interaction / state ============ */
+const btnPrev = document.getElementById("btnPrev");
+const btnPlay = document.getElementById("btnPlay");
+const btnNext = document.getElementById("btnNext");
+const statusEl = document.getElementById("simStatus");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let tick = 0, bursting = false, burstT0 = 0, playing = false, playTimer = null;
+let curCommitted = 0;
+
+function statusN(n) {
+  curCommitted = n;
+  statusEl.textContent = n < NPKT
+    ? `frame ${tick + 1} · packet ${n + 1}/${NPKT} · receiving on 9 links…`
+    : `frame ${tick + 1} · ${NPKT}/${NPKT} · 60×180 sample complete`;
+  btnPrev.disabled = tick === 0;
+}
+function settle() {
+  const T = TICKS[tick % NTICK];
+  const P = T.packets[NPKT - 1];
+  drawScene(T.x1, [{ po: P.po, pw: P.pw, s: Infinity, alpha: 1 }], null);
+  drawCSI(tick, NPKT); statusN(NPKT);
+}
+function fireBurst() {
+  if (reduced) { settle(); return; }
+  bursting = true; burstT0 = performance.now();
+  const T = TICKS[tick % NTICK];
+  const T_glide = (NPKT - 1) * PKT_INT + 0.4;
+  (function anim(now) {
+    if (!bursting) return;
+    const t = (now - burstT0) / 1000;
+    const bx = T.x0 + (T.x1 - T.x0) * Math.min(t / T_glide, 1);
+    const layers = [], fl = [];
+    let committed = 0;
+    for (let j = 0; j < NPKT; j++) {
+      const tj = j * PKT_INT;
+      if (t < tj) break;
+      const P = T.packets[j];
+      const s = (t - tj) * RAY_V;
+      const isLast = j === NPKT - 1;
+      if (s < P.maxL) layers.push({ po: P.po, pw: P.pw, s, alpha: 1 });
+      else {
+        const fade = (s - P.maxL) / (RAY_V * 0.3);
+        if (isLast) layers.push({ po: P.po, pw: P.pw, s: Infinity, alpha: 1 });
+        else if (fade < 1) layers.push({ po: P.po, pw: P.pw, s: Infinity, alpha: Math.max(0, 1 - fade) });
+      }
+      for (let rr = 0; rr < NRX; rr++) {
+        for (const p of P.po[rr]) {
+          if (s >= p.L) { const age = (s - p.L) / (RAY_V * 0.25); if (age < 1) fl.push({ age, k: "o", r: rr }); }
+        }
+        for (const p of P.pw[rr]) {
+          if (s >= p.L) { const age = (s - p.L) / (RAY_V * 0.25); if (age < 1) fl.push({ age, k: "w", r: rr }); }
+        }
+      }
+    }
+    for (let j = 0; j < NPKT; j++) {
+      const tj = j * PKT_INT;
+      const P = T.packets[j];
+      if (t >= tj && (t - tj) * RAY_V >= P.maxL) committed = j + 1; else break;
+    }
+    drawScene(bx, layers, fl);
+    drawCSI(tick, committed);
+    statusN(committed);
+    if (committed >= NPKT) { bursting = false; settle(); if (playing) queueNext(); return; }
+    requestAnimationFrame(anim);
+  })(burstT0);
+}
+function goTo(t, animate) {
+  bursting = false;
+  tick = Math.max(0, t);
+  if (animate) fireBurst(); else settle();
+}
+function queueNext() {
+  clearTimeout(playTimer);
+  playTimer = setTimeout(() => { if (playing) goTo(tick + 1, true); }, 700);
+}
+btnNext.addEventListener("click", () => { stopPlay(); goTo(tick + 1, true); });
+btnPrev.addEventListener("click", () => { stopPlay(); goTo(tick - 1, false); });
+function stopPlay() { playing = false; clearTimeout(playTimer); btnPlay.innerHTML = "&#9654;&nbsp;play"; }
+btnPlay.addEventListener("click", () => {
+  if (playing) { stopPlay(); }
+  else { playing = true; btnPlay.innerHTML = "&#10074;&#10074;&nbsp;pause"; if (!bursting) goTo(tick + 1, true); }
+});
+addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") { stopPlay(); goTo(tick + 1, true); }
+  else if (e.key === "ArrowLeft") { stopPlay(); goTo(tick - 1, false); }
+  else if (e.key === " " && e.target === document.body) { e.preventDefault(); btnPlay.click(); }
+});
+
+/* tooltip */
+const tip = document.getElementById("csiTip");
+csiCv.addEventListener("mousemove", e => {
+  const b = csiCv.getBoundingClientRect();
+  const x = (e.clientX - b.left) / b.width * CW, y = (e.clientY - b.top) / b.height * CH;
+  const rr = Math.floor((y - MT) / (PH / 60));
+  let hit = null;
+  for (let li = 0; li < NLINK; li++) {
+    const bx0 = blockX(li);
+    if (x >= bx0 && x < bx0 + BW) { hit = { li, j: Math.floor((x - bx0) / COLW) }; break; }
+  }
+  if (hit && hit.j >= 0 && hit.j < curCommitted && rr >= 0 && rr < 60) {
+    const d = TICKS[tick % NTICK].packets[hit.j];
+    const sc = rr % 30, isA = rr < 30;
+    const rx = Math.floor(hit.li / 3) + 1, ant = hit.li % 3 + 1;
+    tip.textContent = isA
+      ? `RX${rx}·a${ant} · pkt ${hit.j + 1} · sc ${sc + 1} · amp ${((d.ampL[hit.li * NSC + sc] - ampMin) / (ampMax - ampMin + 1e-9)).toFixed(2)}`
+      : `RX${rx}·a${ant} · pkt ${hit.j + 1} · sc ${sc + 1} · phase ${d.phaL[hit.li * NSC + sc].toFixed(2)} rad`;
+    tip.style.left = (e.clientX - b.left) + "px"; tip.style.top = (e.clientY - b.top) + "px";
+    tip.style.display = "block";
+  } else tip.style.display = "none";
+});
+csiCv.addEventListener("mouseleave", () => tip.style.display = "none");
+
+/* ============ boot: precompute 40 deterministic frames ============ */
+btnPrev.disabled = btnNext.disabled = btnPlay.disabled = true;
+let pm = 0;
+(function pre() {
+  const t0 = performance.now();
+  while (pm < NTICK && performance.now() - t0 < 40) {
+    TICKS.push(computeTick(pm));
+    for (const pk of TICKS[pm].packets) {
+      for (const v of pk.ampL) { amSum += v; amSum2 += v * v; }
+      for (const v of pk.phaL) { phSum += v; phSum2 += v * v; phN++; }
+    }
+    pm++;
+  }
+  statusEl.textContent = `preparing… ${pm}/${NTICK}`;
+  if (pm < NTICK) { setTimeout(pre, 0); return; }
+  const phMean = phSum / phN, phStd = Math.sqrt(Math.max(phSum2 / phN - phMean * phMean, 1e-9));
+  phLo = phMean - 2.5 * phStd; phHi = phMean + 2.5 * phStd;
+  const amMean = amSum / phN, amStd = Math.sqrt(Math.max(amSum2 / phN - amMean * amMean, 1e-9));
+  ampMin = Math.max(0, amMean - 2.5 * amStd); ampMax = amMean + 2.5 * amStd;
+  btnPrev.disabled = btnNext.disabled = btnPlay.disabled = false;
+  btnPrev.disabled = true;
+  if (reduced) { settle(); }
+  else { playing = true; btnPlay.innerHTML = "&#10074;&#10074;&nbsp;pause"; fireBurst(); }
+})();
+})();
+</script>
