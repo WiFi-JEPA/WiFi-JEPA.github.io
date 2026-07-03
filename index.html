@@ -86,6 +86,7 @@
   <script defer src="static/js/bulma-slider.min.js"></script>
   <script defer src="static/js/index.js"></script>
   <script defer src="static/js/pose_results_data.js"></script>
+  <script defer src="static/js/pose_video_data.js"></script>
   <script defer src="static/js/pose_viewer.js"></script>
 
   <!-- Structured Data for Academic Papers -->
@@ -172,6 +173,10 @@
     .pv-mpjpe { font-size:.78rem; color:#8a8a8a; margin-top:.3rem; }
     .pv-expand { position:absolute; top:8px; right:8px; width:27px; height:27px; border-radius:50%; border:1px solid #dde4ec; background:rgba(255,255,255,.85); color:#aeb9c6; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; z-index:4; transition:color .15s, border-color .15s; }
     .pv-expand:hover { color:#2563eb; border-color:#2563eb; background:#fff; }
+    .pv-play { position:absolute; left:8px; bottom:12px; width:27px; height:27px; border-radius:50%; border:1px solid #dde4ec; background:rgba(255,255,255,.85); color:#8b97a5; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; z-index:4; transition:color .15s, border-color .15s; }
+    .pv-play:hover { color:#2563eb; border-color:#2563eb; background:#fff; }
+    .pv-progress { position:absolute; left:0; right:0; bottom:0; height:4px; background:rgba(148,163,184,.22); cursor:pointer; z-index:4; }
+    .pv-progress-fill { height:100%; background:#2563eb; width:0; }
     .pv-modal { position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:1000; display:flex; align-items:center; justify-content:center; padding:1.5rem; }
     .pv-modal-card { background:#fff; border-radius:14px; padding:1.15rem 1.15rem .85rem; box-shadow:0 12px 44px rgba(0,0,0,.28); position:relative; width:min(620px, 92vw, calc(100vh - 8rem)); }
     .pv-modal-holder { position:relative; }
@@ -431,7 +436,7 @@
     </div></div>
     <div class="content has-text-justified">
       <p>
-        The panels below show interactive WiFi-JEPA pose estimation results on PiW3D test frames &mdash; <span style="color:#e11d48;font-weight:600;">ground truth in red</span>, <span style="color:#2563eb;font-weight:600;">prediction in blue</span>. Drag to rotate and scroll (or pinch) to zoom each 3D scene; double-click resets the view. Hovering a joint shows its per-joint error, and the gray number under each panel is that frame's MPJPE.
+        The panels below show interactive WiFi-JEPA pose estimation results on PiW3D test frames &mdash; <span style="color:#e11d48;font-weight:600;">ground truth in red</span>, <span style="color:#2563eb;font-weight:600;">prediction in blue</span>. Drag to rotate and scroll (or pinch) to zoom each 3D scene; double-click resets the view. Hovering a joint shows its per-joint error, and the gray number under each panel is that frame's MPJPE. The last row plays back consecutive test frames as short motion clips &mdash; the same controls apply while they play.
       </p>
     </div>
     <div id="pose-viewer-root"></div>

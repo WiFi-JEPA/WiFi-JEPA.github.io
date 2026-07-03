@@ -1,5 +1,6 @@
 // WiFi-JEPA interactive 3D pose viewer (vanilla Canvas 2D, no dependencies).
-// Data: window.POSE_RESULTS = [{name, count, mpjpe, persons:[{gt:[14][3], pred:[14][3], err:[14]}]}]
+// Static panels: window.POSE_RESULTS = [{name, count, mpjpe, persons:[{gt[14][3], pred[14][3], err[14]}]}]
+// Motion clips:  window.POSE_VIDEOS  = [{name, count, mean_mpjpe, frames:[{mpjpe, persons:[...]}]}]
 // Raw P3D coords are x/y horizontal, z pointing DOWN (floor at z≈4.1) → view space flips z up.
 (function () {
   'use strict';
@@ -25,11 +26,12 @@
   var PRED_COLOR = '#2563eb';  // blue — prediction
   var FLOOR_FILL = '#f5f6f8', FLOOR_LINE = '#dfe3e8';   // front (floor) pane — light gray
   var WALL_FILL = '#eceef1', WALL_LINE = '#d5d9de';     // back wall panes — slightly darker
+  var CLIP_FPS = 12;
 
   // raw (x, y, z) → view (X right, Y up, Z depth)
   function toView(p) { return [p[0], -p[2], p[1]]; }
 
-  function PoseViewer(container, panel) {
+  function PoseViewer(container, panel, capEl) {
     var canvas = document.createElement('canvas');
     canvas.className = 'pv-canvas';
     container.appendChild(canvas);
@@ -38,20 +40,25 @@
     container.appendChild(tip);
 
     var ctx = canvas.getContext('2d');
-    var persons = panel.persons.map(function (pe) {
+    var rawFrames = panel.frames || [{ mpjpe: panel.mpjpe, persons: panel.persons }];
+    var isVideo = rawFrames.length > 1;
+    var frames = rawFrames.map(function (fr) {
       return {
-        gt: pe.gt.map(toView),
-        pred: pe.pred.map(toView),
-        err: pe.err
+        mpjpe: fr.mpjpe,
+        persons: fr.persons.map(function (pe) {
+          return { gt: pe.gt.map(toView), pred: pe.pred.map(toView), err: pe.err };
+        })
       };
     });
 
-    // scene bounds (all skeleton points)
-    var pts = [];
-    persons.forEach(function (pe) { pts = pts.concat(pe.gt, pe.pred); });
+    // scene bounds over ALL frames (stable camera while people move)
     var mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
-    pts.forEach(function (p) {
-      for (var i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], p[i]); mx[i] = Math.max(mx[i], p[i]); }
+    frames.forEach(function (fr) {
+      fr.persons.forEach(function (pe) {
+        pe.gt.concat(pe.pred).forEach(function (p) {
+          for (var i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], p[i]); mx[i] = Math.max(mx[i], p[i]); }
+        });
+      });
     });
     var center = [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2];
     var radius = Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]) / 2 || 1;
@@ -61,8 +68,10 @@
 
     var DEF = { yaw: -0.6, pitch: 0.32, zoom: 1 };
     var yaw = DEF.yaw, pitch = DEF.pitch, zoom = DEF.zoom;
-    var hover = null;        // {pi, ji}
-    var projected = [];      // [{x, y, pi, ji, kind}]
+    var fi = 0;               // current frame
+    var hover = null;         // {pi, ji}
+    var projected = [];       // [{x, y, pi, ji}]
+    var lastMouse = null;
     var W = 0, H = 0, dpr = 1;
 
     function resize() {
@@ -104,6 +113,15 @@
       return [(c[0][0] + c[2][0]) / 2, (c[0][1] + c[2][1]) / 2, (c[0][2] + c[2][2]) / 2];
     }
 
+    function line(a, b, colorStr, w) {
+      ctx.strokeStyle = colorStr;
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+
     function drawPane(corners, fill, lineCol) {
       var q = corners.map(project);
       ctx.fillStyle = fill;
@@ -120,15 +138,6 @@
         line(project(lerp3(corners[0], corners[3], t)),
              project(lerp3(corners[1], corners[2], t)), lineCol, 1);
       }
-    }
-
-    function line(a, b, colorStr, w) {
-      ctx.strokeStyle = colorStr;
-      ctx.lineWidth = w;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
     }
 
     function render() {
@@ -157,6 +166,7 @@
       panes.forEach(function (pn) { drawPane(pn.c, pn.fill, pn.lineCol); });
 
       projected = [];
+      var persons = frames[fi].persons;
       persons.forEach(function (pe, pi) {
         [['gt', GT_COLOR, 2], ['pred', PRED_COLOR, 2.5]].forEach(function (spec) {
           var kind = spec[0], colorStr = spec[1], lw = spec[2];
@@ -180,17 +190,19 @@
       });
     }
 
-    function pickJoint(mx, my) {
+    function pickJoint(mx2, my2) {
       var best = null, bd = 12 * 12;
       projected.forEach(function (q) {
-        var d = (q.x - mx) * (q.x - mx) + (q.y - my) * (q.y - my);
+        var d = (q.x - mx2) * (q.x - mx2) + (q.y - my2) * (q.y - my2);
         if (d < bd) { bd = d; best = q; }
       });
       return best;
     }
 
     function showTip(q) {
+      var persons = frames[fi].persons;
       var pe = persons[q.pi];
+      if (!pe) { tip.style.display = 'none'; return; }
       var label = (persons.length > 1 ? 'P' + (q.pi + 1) + ' · ' : '') +
         JOINT_NAMES[q.ji] + ' · ' + pe.err[q.ji].toFixed(1) + ' mm';
       tip.textContent = label;
@@ -200,7 +212,99 @@
       tip.style.top = Math.max(q.y - 14, 10) + 'px';
     }
 
-    // --- interaction: drag rotate, wheel zoom, pinch zoom, dblclick reset, hover ---
+    function refreshHover() {
+      if (!lastMouse) return;
+      var q = pickJoint(lastMouse.x, lastMouse.y);
+      hover = q ? { pi: q.pi, ji: q.ji } : null;
+      if (q) showTip(q); else tip.style.display = 'none';
+    }
+
+    // ---------- animation ----------
+    var playing = isVideo, userPaused = false, visible = true;
+    var rafId = null, lastT = 0, acc = 0;
+    var playBtn = null, progFill = null;
+
+    function updateCap() {
+      if (!capEl) return;
+      var t = 'MPJPE ' + frames[fi].mpjpe.toFixed(1) + ' mm';
+      if (isVideo) t += ' · ' + (fi + 1) + '/' + frames.length;
+      capEl.textContent = t;
+    }
+
+    function updateProgress() {
+      if (progFill) progFill.style.width = ((fi + 1) / frames.length * 100) + '%';
+    }
+
+    function setFrame(i) {
+      fi = ((i % frames.length) + frames.length) % frames.length;
+      if (hover) refreshHover();
+      updateCap();
+      updateProgress();
+      render();
+    }
+
+    function tick(t) {
+      rafId = null;
+      if (!playing || !visible) { lastT = 0; return; }
+      if (lastT) acc += t - lastT;
+      lastT = t;
+      var step = 1000 / CLIP_FPS;
+      if (acc >= step) {
+        var adv = Math.floor(acc / step);
+        acc -= adv * step;
+        setFrame(fi + adv);
+      }
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function ensureLoop() {
+      if (playing && visible && !rafId) { lastT = 0; acc = 0; rafId = requestAnimationFrame(tick); }
+    }
+
+    function syncPlayBtn() {
+      if (!playBtn) return;
+      playBtn.innerHTML = playing
+        ? '<svg viewBox="0 0 24 24" width="11" height="11"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="12" height="12"><path d="M8 5 L19 12 L8 19 Z" fill="currentColor"/></svg>';
+      playBtn.title = playing ? 'Pause' : 'Play';
+    }
+
+    if (isVideo) {
+      playBtn = document.createElement('button');
+      playBtn.className = 'pv-play';
+      playBtn.setAttribute('aria-label', 'Play or pause');
+      playBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        playing = !playing;
+        userPaused = !playing;
+        syncPlayBtn();
+        ensureLoop();
+      });
+      container.appendChild(playBtn);
+      syncPlayBtn();
+
+      var prog = document.createElement('div');
+      prog.className = 'pv-progress';
+      progFill = document.createElement('div');
+      progFill.className = 'pv-progress-fill';
+      prog.appendChild(progFill);
+      prog.addEventListener('pointerdown', function (e) {
+        e.stopPropagation();
+        var r = prog.getBoundingClientRect();
+        setFrame(Math.floor((e.clientX - r.left) / r.width * frames.length));
+      });
+      container.appendChild(prog);
+
+      if (window.IntersectionObserver) {
+        new IntersectionObserver(function (entries) {
+          visible = entries[0].isIntersecting;
+          ensureLoop();
+        }, { threshold: 0.12 }).observe(container);
+      }
+      ensureLoop();
+    }
+
+    // ---------- interaction: drag rotate, wheel zoom, pinch, dblclick reset, hover ----------
     var pointers = {}, dragging = false, lastX = 0, lastY = 0, pinchD = 0;
 
     canvas.addEventListener('pointerdown', function (ev) {
@@ -239,7 +343,8 @@
       }
       // hover (mouse only)
       var rct = canvas.getBoundingClientRect();
-      var q = pickJoint(ev.clientX - rct.left, ev.clientY - rct.top);
+      lastMouse = { x: ev.clientX - rct.left, y: ev.clientY - rct.top };
+      var q = pickJoint(lastMouse.x, lastMouse.y);
       var changed = (q === null) !== (hover === null) ||
         (q && hover && (q.pi !== hover.pi || q.ji !== hover.ji));
       hover = q ? { pi: q.pi, ji: q.ji } : null;
@@ -259,6 +364,7 @@
     canvas.addEventListener('pointerup', endPointer);
     canvas.addEventListener('pointercancel', endPointer);
     canvas.addEventListener('pointerleave', function () {
+      lastMouse = null;
       if (!dragging) { hover = null; tip.style.display = 'none'; render(); }
     });
 
@@ -275,9 +381,17 @@
 
     if (window.ResizeObserver) new ResizeObserver(resize).observe(container);
     else window.addEventListener('resize', resize);
+    updateCap();
+    updateProgress();
     resize();
 
-    return { render: render, canvas: canvas };
+    return {
+      render: render,
+      canvas: canvas,
+      seek: setFrame,
+      frame: function () { return fi; },
+      setPlaying: function (p) { playing = !!p; syncPlayBtn(); ensureLoop(); }
+    };
   }
 
   var MAGNIFIER_SVG =
@@ -299,8 +413,7 @@
       '</div>';
     document.body.appendChild(ov);
     document.body.classList.add('pv-noscroll');
-    ov.querySelector('.pv-mpjpe').textContent = 'MPJPE ' + panel.mpjpe.toFixed(1) + ' mm';
-    PoseViewer(ov.querySelector('.pv-modal-holder'), panel);
+    PoseViewer(ov.querySelector('.pv-modal-holder'), panel, ov.querySelector('.pv-mpjpe'));
     function close() {
       document.body.classList.remove('pv-noscroll');
       document.removeEventListener('keydown', onKey);
@@ -312,46 +425,50 @@
     document.addEventListener('keydown', onKey);
   }
 
-  function init() {
-    var data = window.POSE_RESULTS || [];
-    var root = document.getElementById('pose-viewer-root');
-    if (!root || !data.length) return;
-    var groups = [[1, 'Single-person'], [2, 'Two-person'], [3, 'Three-person']];
-    window.__poseViewers = [];
-    groups.forEach(function (grp) {
-      var items = data.filter(function (p) { return p.count === grp[0]; });
-      if (!items.length) return;
-      var lab = document.createElement('div');
-      lab.className = 'pv-rowlabel';
-      lab.textContent = grp[1];
-      root.appendChild(lab);
-      var grid = document.createElement('div');
-      grid.className = 'pv-grid';
-      root.appendChild(grid);
-      items.forEach(function (panel) {
-        var cell = document.createElement('div');
-        cell.className = 'pv-cell';
-        var holder = document.createElement('div');
-        holder.className = 'pv-holder';
-        cell.appendChild(holder);
-        var btn = document.createElement('button');
-        btn.className = 'pv-expand';
-        btn.title = 'Enlarge';
-        btn.setAttribute('aria-label', 'Enlarge this result');
-        btn.innerHTML = MAGNIFIER_SVG;
-        btn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          openModal(panel);
-        });
-        holder.appendChild(btn);
-        var cap = document.createElement('div');
-        cap.className = 'pv-mpjpe';
-        cap.textContent = 'MPJPE ' + panel.mpjpe.toFixed(1) + ' mm';
-        cell.appendChild(cap);
-        grid.appendChild(cell);
-        window.__poseViewers.push(PoseViewer(holder, panel));
+  function buildGrid(root, items, label) {
+    if (!items.length) return;
+    var lab = document.createElement('div');
+    lab.className = 'pv-rowlabel';
+    lab.textContent = label;
+    root.appendChild(lab);
+    var grid = document.createElement('div');
+    grid.className = 'pv-grid';
+    root.appendChild(grid);
+    items.forEach(function (panel) {
+      var cell = document.createElement('div');
+      cell.className = 'pv-cell';
+      var holder = document.createElement('div');
+      holder.className = 'pv-holder';
+      cell.appendChild(holder);
+      var btn = document.createElement('button');
+      btn.className = 'pv-expand';
+      btn.title = 'Enlarge';
+      btn.setAttribute('aria-label', 'Enlarge this result');
+      btn.innerHTML = MAGNIFIER_SVG;
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        openModal(panel);
       });
+      holder.appendChild(btn);
+      var cap = document.createElement('div');
+      cap.className = 'pv-mpjpe';
+      cell.appendChild(cap);
+      grid.appendChild(cell);
+      window.__poseViewers.push(PoseViewer(holder, panel, cap));
     });
+  }
+
+  function init() {
+    var root = document.getElementById('pose-viewer-root');
+    if (!root) return;
+    var data = window.POSE_RESULTS || [];
+    var vids = window.POSE_VIDEOS || [];
+    if (!data.length && !vids.length) return;
+    window.__poseViewers = [];
+    [[1, 'Single-person'], [2, 'Two-person'], [3, 'Three-person']].forEach(function (grp) {
+      buildGrid(root, data.filter(function (p) { return p.count === grp[0]; }), grp[1]);
+    });
+    buildGrid(root, vids, 'Motion Clips');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
