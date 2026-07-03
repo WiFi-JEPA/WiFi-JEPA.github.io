@@ -85,6 +85,8 @@
   <script defer src="static/js/bulma-carousel.min.js"></script>
   <script defer src="static/js/bulma-slider.min.js"></script>
   <script defer src="static/js/index.js"></script>
+  <script defer src="static/js/pose_results_data.js"></script>
+  <script defer src="static/js/pose_viewer.js"></script>
 
   <!-- Structured Data for Academic Papers -->
   <script type="application/ld+json">
@@ -159,6 +161,25 @@
     .xd-arrow { flex:0 0 auto; display:flex; align-items:center; gap:.55rem; }
     .xd-delta { font-size:2rem; font-weight:800; color:#2563eb; line-height:1; white-space:nowrap; }
     @media (max-width:600px){ .xd-label{flex-basis:78px;font-size:.8rem;} .xd-val{flex-basis:64px;font-size:.8rem;} .xd-panel{gap:.7rem;} .xd-delta{font-size:1.5rem;} }
+    /* Interactive 3D pose viewer */
+    .pv-rowlabel { text-align:center; font-size:.92rem; font-weight:700; color:#111; margin:1.2rem 0 .45rem; text-transform:uppercase; letter-spacing:.05em; }
+    .pv-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:.9rem; }
+    .pv-cell { text-align:center; min-width:0; }
+    .pv-holder { position:relative; border:1px solid #e8eef5; border-radius:10px; overflow:hidden; background:#fff; }
+    .pv-canvas { display:block; touch-action:none; cursor:grab; }
+    .pv-grabbing .pv-canvas { cursor:grabbing !important; }
+    .pv-tip { display:none; position:absolute; transform:translate(-50%,-100%); background:#1e293b; color:#fff; font-size:.72rem; padding:.25rem .5rem; border-radius:6px; white-space:nowrap; pointer-events:none; z-index:5; }
+    .pv-mpjpe { font-size:.78rem; color:#8a8a8a; margin-top:.3rem; }
+    .pv-expand { position:absolute; top:8px; right:8px; width:27px; height:27px; border-radius:50%; border:1px solid #dde4ec; background:rgba(255,255,255,.85); color:#aeb9c6; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; z-index:4; transition:color .15s, border-color .15s; }
+    .pv-expand:hover { color:#2563eb; border-color:#2563eb; background:#fff; }
+    .pv-modal { position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:1000; display:flex; align-items:center; justify-content:center; padding:1.5rem; }
+    .pv-modal-card { background:#fff; border-radius:14px; padding:1.15rem 1.15rem .85rem; box-shadow:0 12px 44px rgba(0,0,0,.28); position:relative; width:min(620px, 92vw, calc(100vh - 8rem)); }
+    .pv-modal-holder { position:relative; }
+    .pv-modal-close { position:absolute; top:.35rem; right:.55rem; border:none; background:none; font-size:1.55rem; line-height:1; color:#94a3b8; cursor:pointer; z-index:6; padding:.1rem .3rem; }
+    .pv-modal-close:hover { color:#334155; }
+    .pv-noscroll { overflow:hidden; }
+    @media (max-width:900px){ .pv-grid { grid-template-columns:repeat(2,1fr); } }
+    @media (max-width:480px){ .pv-grid { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -397,15 +418,26 @@
     </div>
     <!-- End cross-domain -->
 
-    <figure class="section-figure" style="margin-top:2.5rem;">
-      <img src="static/images/figures/qualitative.png" alt="Qualitative 3D pose comparison: baseline vs WiFi-JEPA">
-    </figure>
-    <p class="fig-caption has-text-centered">
-      Qualitative comparison (GT in cyan, prediction in red). <em>Top:</em> PiW3D baseline. <em>Bottom:</em> WiFi-JEPA. <em>Left to right:</em> 1-, 2-, and 3-person scenes.
-    </p>
   </div>
 </section>
 <!-- End results -->
+
+
+<!-- Supplementary visualization -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered"><div class="column has-text-centered">
+      <h2 class="title is-3">Supplementary Visualization</h2>
+    </div></div>
+    <div class="content has-text-justified">
+      <p>
+        The panels below show interactive WiFi-JEPA pose estimation results on PiW3D test frames &mdash; <span style="color:#e11d48;font-weight:600;">ground truth in red</span>, <span style="color:#2563eb;font-weight:600;">prediction in blue</span>. Drag to rotate and scroll (or pinch) to zoom each 3D scene; double-click resets the view. Hovering a joint shows its per-joint error, and the gray number under each panel is that frame's MPJPE.
+      </p>
+    </div>
+    <div id="pose-viewer-root"></div>
+  </div>
+</section>
+<!-- End supplementary visualization -->
 
 
 <!--BibTex citation -->
