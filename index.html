@@ -147,15 +147,18 @@
     .simobj-slot { aspect-ratio:21/9; background:#1f2733; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#9aa6b6; font-size:.95rem; text-align:center; padding:1rem; box-shadow:0 1px 6px rgba(0,0,0,.12); }
     /* Cross-domain generalization block */
     .cross-domain { margin:2.75rem auto 0; }
-    .xd-bars { max-width:720px; margin:0 auto; }
-    .xd-row { display:flex; align-items:center; gap:.7rem; margin:.45rem 0; }
+    .xd-panel { display:flex; align-items:center; justify-content:center; gap:1rem; max-width:820px; margin:1.75rem auto 0; }
+    .xd-bars { flex:1 1 auto; min-width:0; }
+    .xd-row { display:flex; align-items:center; gap:.7rem; margin:.55rem 0; }
     .xd-label { flex:0 0 132px; text-align:right; font-size:.9rem; color:#444; }
     .xd-track { flex:1 1 auto; height:26px; background:#f1f5f9; border-radius:6px; overflow:hidden; }
     .xd-fill { display:block; height:100%; border-radius:6px 0 0 6px; }
     .xd-base { background:#cbd5e1; }
     .xd-ours { background:#2563eb; }
-    .xd-val { flex:0 0 56px; font-size:.9rem; color:#333; }
-    @media (max-width:600px){ .xd-label{flex-basis:84px;font-size:.8rem;} .xd-val{flex-basis:48px;font-size:.8rem;} }
+    .xd-val { flex:0 0 74px; font-size:.9rem; color:#333; }
+    .xd-arrow { flex:0 0 auto; display:flex; align-items:center; gap:.55rem; }
+    .xd-delta { font-size:2rem; font-weight:800; color:#2563eb; line-height:1; white-space:nowrap; }
+    @media (max-width:600px){ .xd-label{flex-basis:78px;font-size:.8rem;} .xd-val{flex-basis:64px;font-size:.8rem;} .xd-panel{gap:.7rem;} .xd-delta{font-size:1.5rem;} }
   </style>
 </head>
 <body>
@@ -365,22 +368,29 @@
         </p>
       </div>
 
-      <div class="stat-strip" style="margin-top:0;margin-bottom:1.6rem;">
-        <div class="stat"><div class="num">324.2&nbsp;mm</div><div class="lbl">WiFi-JEPA mean</div></div>
-        <div class="stat"><div class="num">626.4&nbsp;mm</div><div class="lbl">PiW3D mean</div></div>
-        <div class="stat"><div class="num">&minus;48.2%</div><div class="lbl">cross-env error</div></div>
-      </div>
-
-      <div class="xd-bars">
-        <div class="xd-row">
-          <span class="xd-label">PiW3D (mean)</span>
-          <span class="xd-track"><span class="xd-fill xd-base" style="width:94.9%;"></span></span>
-          <span class="xd-val">626.4</span>
+      <div class="xd-panel">
+        <div class="xd-bars">
+          <div class="xd-row">
+            <span class="xd-label">PiW3D (mean)</span>
+            <span class="xd-track"><span class="xd-fill xd-base" style="width:94.9%;"></span></span>
+            <span class="xd-val">626.4&nbsp;mm</span>
+          </div>
+          <div class="xd-row">
+            <span class="xd-label"><strong>WiFi-JEPA (mean)</strong></span>
+            <span class="xd-track"><span class="xd-fill xd-ours" style="width:49.1%;"></span></span>
+            <span class="xd-val"><strong>324.2&nbsp;mm</strong></span>
+          </div>
         </div>
-        <div class="xd-row">
-          <span class="xd-label"><strong>WiFi-JEPA (mean)</strong></span>
-          <span class="xd-track"><span class="xd-fill xd-ours" style="width:49.1%;"></span></span>
-          <span class="xd-val"><strong>324.2</strong></span>
+        <div class="xd-arrow">
+          <svg width="56" height="86" viewBox="0 0 56 86" fill="none" aria-hidden="true">
+            <path d="M 10 10 C 44 22 18 54 18 76" stroke="#2563eb" stroke-width="2.5" fill="none" marker-end="url(#xd-ah)"/>
+            <defs>
+              <marker id="xd-ah" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+                <path d="M1.5,1.5 L8,5 L1.5,8.5" stroke="#2563eb" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              </marker>
+            </defs>
+          </svg>
+          <span class="xd-delta">&minus;48.2%</span>
         </div>
       </div>
 
