@@ -4,6 +4,8 @@ Project page for **WiFi-JEPA: Self-supervised Learning for WiFi-CSI 3D Human Pos
 
 🌐 **Live page:** https://wifi-jepa.github.io/
 
+📄 **Paper:** [arXiv:2607.11064](https://arxiv.org/abs/2607.11064)
+
 ## Authors
 
 Doeon Kim, Jungyoon Lee, Seongsin Kim, Seong-heum Kim
